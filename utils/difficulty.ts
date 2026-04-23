@@ -10,11 +10,11 @@ export const difficultyMap = (platform: string, rating: number): string => {
             return "very hard"
     }
     else if(platform === 'atcoder'){
-        if(rating <= 1199)
+        if(rating <= 299)
             return "easy"
-        else if(rating >= 1200 && rating <= 1599)
+        else if(rating >= 300 && rating <= 499)
             return "medium"
-        else if(rating >= 1600 && rating <= 1999)
+        else if(rating >= 500 && rating <= 799)
             return "hard"
         else
             return "very hard"

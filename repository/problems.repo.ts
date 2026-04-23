@@ -6,7 +6,7 @@ type ProblemEntry = Database["public"]["Tables"]["problems"]["Insert"]
 export const getAllProbs = async (): Promise<Set<string>> => {
     const { data, error } = await supabase
                                 .from("problems")
-                                .select("*");
+                                .select("problem_id");
 
     if(error)
         throw new Error(`Error while fetching problems ${error.message}`);

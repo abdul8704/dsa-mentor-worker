@@ -31,3 +31,21 @@ export type CodeforcesResponse = {
       "timeConsumedMillis": number,
       "memoryConsumedBytes": number
 }
+
+export type AtcoderCountResponse = {
+  count: number,
+  rank: number
+}
+
+export type AtcoderSubmissionResponse = {
+  "id": number,
+  "epoch_second": number,
+  "problem_id": string,
+  "contest_id": string,
+  "user_id": string,
+  "language": string,
+  "point": number,
+  "length": number,
+  "result": string,
+  "execution_time": number
+}

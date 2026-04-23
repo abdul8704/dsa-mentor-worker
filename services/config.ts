@@ -7,3 +7,12 @@ export const CODEFORCES_API = {
         userRating: (handle: string) => `/user.rating?handle=${handle}`,
     }
 }
+
+export const ATCODER_API = {
+    BASE_URL: "https://kenkoooo.com/atcoder/atcoder-api/v3/user",
+
+    endpoints: {
+        userSubmissions: (handle: string, from_time: number) => `/submissions?user=${handle}&from_second=${from_time}`,
+        acceptedCount: (handle: string) => `/ac_rank?user=${handle}`,
+    }
+}

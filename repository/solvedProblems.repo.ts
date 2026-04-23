@@ -19,7 +19,23 @@ export const getUserSolvedProblems = async (userid: string): Promise<Set<string>
     return solvedSet;
 }
 
-export const addCodeforcesSolvedProblems = async (problems: CF_Insert[]) => {
+export const getUserSolvedProblemsByDate = async (userid: string): Promise<Set<string>> => {
+    const { data, error } = await supabase
+                                .from("solved_problems")
+                                .select('problem_id, solved_date')
+                                .eq("user_id", userid);
+
+    if(error)
+        throw new Error(`Error while fetching users solved problems ${error.message}`);
+
+    let solvedSet = new Set<string>();
+
+    data.forEach((prob) => solvedSet.add(prob.problem_id + "-" + prob.solved_date));
+
+    return solvedSet;
+}
+
+export const addSolvedProblems = async (problems: CF_Insert[]) => {
     const { error } = await supabase                                
                                 .from("solved_problems")
                                 .insert(problems);

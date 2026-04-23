@@ -1,9 +1,9 @@
-import { CODEFORCES_API  } from "./config.ts";
+import { CODEFORCES_API  } from "../config.ts";
 import { supabase } from "../../db/supabase.ts";
 import type { CodeforcesResponse } from "../../types/platformResponse.ts";
-import { filterNewSolved } from "../../utils/dbHelper.ts";
+import { filterNewSolvedCodeforces } from "../../utils/dbHelper.ts";
 import type { Database } from "../../types/db.ts"
-import { addCodeforcesSolvedProblems } from "../../repository/solvedProblems.repo.ts";
+import { addSolvedProblems } from "../../repository/solvedProblems.repo.ts";
 
 type CF_Insert = Database["public"]["Tables"]["solved_problems"]["Insert"]
 
@@ -57,13 +57,13 @@ export const getAllSubmissions = async (user_id: string, handle: string): Promis
     const acceptedUniqueSubmissions = getAcceptedUniqueSubmissions(allSubmissions);
     console.log(`Total unique Codeforces solved problems for ${handle}: ${acceptedUniqueSubmissions.length}`);
 
-    const filtered: CF_Insert[] = await filterNewSolved(user_id, "codeforces", acceptedUniqueSubmissions);
-    await addCodeforcesSolvedProblems(filtered); // add new solved problems to database
+    const filtered: CF_Insert[] = await filterNewSolvedCodeforces(user_id, "codeforces", acceptedUniqueSubmissions);
+    await addSolvedProblems(filtered); // add new solved problems to database
 }
 
 export const refreshCodeforces = async (user_id: string, handle: string): Promise<void> => {
     const url = CODEFORCES_API.BASE_URL;
-    let start = 1, count = 50;
+    let start = 1, count = 50; // get only 50 submissions
     let submissions: CodeforcesResponse[] = [];
     console.log(`Refreshing Codeforces data for handle: ${handle}`);
 
@@ -81,8 +81,8 @@ export const refreshCodeforces = async (user_id: string, handle: string): Promis
     console.log(`Accepted unique submissions in latest refresh for ${handle}: ${acceptedUniqueSubmissions.length}`);
 
     // remove already solved problems and return only new ones
-    const filtered: CF_Insert[] = await filterNewSolved(user_id, "codeforces", acceptedUniqueSubmissions);
+    const filtered: CF_Insert[] = await filterNewSolvedCodeforces(user_id, "codeforces", acceptedUniqueSubmissions);
 
-    await addCodeforcesSolvedProblems(filtered); // add new solved problems to database
+    await addSolvedProblems(filtered); // add new solved problems to database
 }
 
