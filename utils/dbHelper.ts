@@ -69,8 +69,9 @@ export const filterNewSolvedCodeforces = async (user_id: string, platform: strin
 
 export const filterNewSolvedAtCoder = async (user_id: string, platform: string, payload: AtcoderSubmissionResponse[]): Promise<solved_problems_insert[]> => {
     const solved: Set<string> = await getUserSolvedProblems(user_id);
+    const solvedByDate: Set<string> = await getUserSolvedProblemsByDate(user_id);
     const problemSet: Set<string> = await getAllProbs();
-    const solvedByDate: Set<string> = new Set<string>();
+
     let resultSet: solved_problems_insert[] = [];
     let newProblems: ProblemEntry[] = [];
     const queuedProblemIds = new Set<string>();
@@ -79,8 +80,6 @@ export const filterNewSolvedAtCoder = async (user_id: string, platform: string, 
     if (!platformPrefix) {
         return resultSet;
     }
-
-    payload.sort((a, b) => a.epoch_second - b.epoch_second);
 
     payload.forEach((entry) => {
         const problem_id: string = platformPrefix + entry.problem_id;
@@ -109,7 +108,6 @@ export const filterNewSolvedAtCoder = async (user_id: string, platform: string, 
                 problem_id,
                 platform,
                 rating: entry.point,
-                tags: null, // Atcoder API does not provide tags
                 title: entry.problem_id,
                 difficulty: difficultyMap(platform, entry.point)
             })

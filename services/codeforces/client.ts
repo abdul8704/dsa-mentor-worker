@@ -1,9 +1,9 @@
 import { CODEFORCES_API  } from "../config.ts";
-import { supabase } from "../../db/supabase.ts";
-import type { CodeforcesResponse } from "../../types/platformResponse.ts";
+import type { CodeforcesResponse, CodeforcesSolvedCountResponse } from "../../types/platformResponse.ts";
 import { filterNewSolvedCodeforces } from "../../utils/dbHelper.ts";
 import type { Database } from "../../types/db.ts"
-import { addSolvedProblems } from "../../repository/solvedProblems.repo.ts";
+import { addSolvedProblems, getCodeforcesSolvedCount } from "../../repository/solvedProblems.repo.ts";
+import { get } from "node:http";
 
 type CF_Insert = Database["public"]["Tables"]["solved_problems"]["Insert"]
 
@@ -86,3 +86,19 @@ export const refreshCodeforces = async (user_id: string, handle: string): Promis
     await addSolvedProblems(filtered); // add new solved problems to database
 }
 
+export const getCodeforcesUserInfo = async (user_id: string, handle: string): Promise<CodeforcesSolvedCountResponse> => {
+    const url = CODEFORCES_API.BASE_URL + CODEFORCES_API.endpoints.userInfo(handle);
+    const response = await fetch(url);      
+
+    if(response.status !== 200)
+        throw new Error(`Failed to fetch solved count for ${handle}: ${response.statusText}`);
+
+    const data = await response.json();
+
+    return {
+        count: await getCodeforcesSolvedCount(user_id),
+        rating: data.result[0].rating || 0,
+        maxRating: data.result[0].maxRating || 0,
+        rank: data.result[0].rank || "unrated"
+    }
+}

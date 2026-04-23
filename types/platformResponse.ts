@@ -1,40 +1,69 @@
 export type CodeforcesResponse = {
-      "id": number,
-      "contestId": number,
-      "creationTimeSeconds": number,
-      "relativeTimeSeconds": number,
-      "problem": {
-        "contestId": number,
-        "index": string,
-        "name": string,
-        "type": string,
-        "points": number,
-        "rating": number,
-        "tags": [string]
-      },
-      "author": {
-        "contestId": number,
-        "participantId": number,
-        "members": [
-          {
-            "handle": string
-          }
-        ],
-        "participantType": string,
-        "ghost": boolean,
-        "startTimeSeconds": number
-      },
-      "programmingLanguage": string,
-      "verdict": string,
-      "testset": string,
-      "passedTestCount": number,
-      "timeConsumedMillis": number,
-      "memoryConsumedBytes": number
+  "id": number,
+  "contestId": number,
+  "creationTimeSeconds": number,
+  "relativeTimeSeconds": number,
+  "problem": {
+    "contestId": number,
+    "index": string,
+    "name": string,
+    "type": string,
+    "points": number,
+    "rating": number,
+    "tags": [string]
+  },
+  "author": {
+    "contestId": number,
+    "participantId": number,
+    "members": [
+      {
+        "handle": string
+      }
+    ],
+    "participantType": string,
+    "ghost": boolean,
+    "startTimeSeconds": number
+  },
+  "programmingLanguage": string,
+  "verdict": string,
+  "testset": string,
+  "passedTestCount": number,
+  "timeConsumedMillis": number,
+  "memoryConsumedBytes": number
 }
+
+export type CodeForcesUserInfoResponse = {
+  "lastName": string,
+  "country": string,
+  "lastOnlineTimeSeconds": number,
+  "city": string,
+  "rating": number,
+  "friendOfCount": number,
+  "titlePhoto": string,
+  "handle": string,
+  "avatar": string,
+  "firstName": string,
+  "contribution": number,
+  "organization": string,
+  "rank": string,
+  "maxRating": number,
+  "registrationTimeSeconds": number,
+  "maxRank": string
+}
+
+export type CodeforcesSolvedCountResponse = {
+  "rating": number,
+  "maxRating": number,
+  "rank": string,
+  "count": number
+}
+
 
 export type AtcoderCountResponse = {
   count: number,
-  rank: number
+  rank: number,
+  rating: number,
+  maxRating: number
 }
 
 export type AtcoderSubmissionResponse = {

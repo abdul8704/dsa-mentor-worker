@@ -3,7 +3,7 @@ export const CODEFORCES_API = {
 
     endpoints: {
         userStatus: (handle: string, from: number, count: number) => `/user.status?handle=${handle}&from=${from}&count=${count}`,
-        userInfo: (handles: string[]) => `/user.info?handles=${handles.join(";")}`,
+        userInfo: (handle: string) => `/user.info?handles=${handle}&checkHistoricHandles=false`,
         userRating: (handle: string) => `/user.rating?handle=${handle}`,
     }
 }
@@ -14,5 +14,6 @@ export const ATCODER_API = {
     endpoints: {
         userSubmissions: (handle: string, from_time: number) => `/submissions?user=${handle}&from_second=${from_time}`,
         acceptedCount: (handle: string) => `/ac_rank?user=${handle}`,
+        rating: (handle: string) => `https://atcoder.jp/users/${handle}/history/json`
     }
 }

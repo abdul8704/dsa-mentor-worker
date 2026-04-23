@@ -1,5 +1,6 @@
 import { supabase } from "../db/supabase.ts";
 import type { Database } from "../types/db.ts"
+import type { CodeforcesSolvedCountResponse } from "../types/platformResponse.ts";
 
 type CF_Insert = Database["public"]["Tables"]["solved_problems"]["Insert"]
 
@@ -43,4 +44,17 @@ export const addSolvedProblems = async (problems: CF_Insert[]) => {
         throw new Error(`Error while inserting solved problems ${error.message}`);
 
     return { success: true };
+}
+
+export const getCodeforcesSolvedCount = async (user_id: string): Promise<number> => {
+    const { data, error } = await supabase
+        .from("solved_problems")
+        .select('problem_id')
+        .eq("user_id", user_id)
+        .eq("platform", "codeforces");
+
+    if(error)
+        throw new Error(`Error while fetching solved count for ${user_id}: ${error.message}`);
+
+    return new Set(data.map(d => d.problem_id)).size;
 }
