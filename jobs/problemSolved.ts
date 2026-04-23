@@ -1,11 +1,11 @@
 ﻿import { refreshCodeforces, getAllSubmissions } from "../services/codeforces/client.ts";
 import { getUserPlatforms } from "../repository/userPlatform.repo.ts";
 import { getAllUsers } from "../repository/profile.repo.ts";
-import { getAllSubmissionsAtcoder } from "../services/atcoder/client.ts";
+import { getAllSubmissionsAtcoder, refreshAtcoder } from "../services/atcoder/client.ts";
 
 const refreshMap: Record<string, (user_id: string, handle: string) => Promise<void>> = {
-    codeforces: getAllSubmissions,
-    atcoder: getAllSubmissionsAtcoder
+    codeforces: refreshCodeforces,
+    atcoder: refreshAtcoder
 }
 
 export const refreshAll = async (): Promise<{ success: boolean }> => {

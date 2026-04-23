@@ -3,8 +3,22 @@ import { filterNewSolvedAtCoder } from "../../utils/dbHelper.ts";
 import type { Database } from "../../types/db.ts"
 import { ATCODER_API, CODEFORCES_API } from "../config.ts";
 import { addSolvedProblems } from "../../repository/solvedProblems.repo.ts";
+import { upsertUserPlatformData } from "../../repository/userPlatformData.repo.ts";
 
 type AC_Insert = Database["public"]["Tables"]["solved_problems"]["Insert"]
+
+const syncAtcoderPlatformData = async (user_id: string, handle: string): Promise<void> => {
+    const info = await getAtcoderSolvedCount(handle);
+
+    await upsertUserPlatformData({
+        user_id,
+        platform: "atcoder",
+        solved_count: info.count,
+        rating: info.rating,
+        max_rating: info.maxRating,
+        updated_at: new Date().toISOString()
+    });
+};
 
 const getAcceptedUniqueSubmissions = (submissions: AtcoderSubmissionResponse[]): AtcoderSubmissionResponse[] => {
     const seenProblems = new Set<string>();
@@ -57,6 +71,7 @@ export const getAllSubmissionsAtcoder = async (user_id: string, handle: string):
 
     const filtered: AC_Insert[] = await filterNewSolvedAtCoder(user_id, "atcoder", acceptedUniqueSubmissions);
     await addSolvedProblems(filtered); // add new solved problems to database
+    await syncAtcoderPlatformData(user_id, handle);
 }
 
 export const refreshAtcoder = async (user_id: string, handle: string): Promise<void> => {
@@ -75,12 +90,19 @@ export const refreshAtcoder = async (user_id: string, handle: string): Promise<v
     if(!data)
         throw new Error(`API error for ${handle}: ${data}`);
 
-    allSubmissions = allSubmissions.concat(data.result as AtcoderSubmissionResponse[]);
+    const submissions = Array.isArray(data) ? data : data.result;
+
+    if (!Array.isArray(submissions)) {
+        throw new Error(`Invalid API response for ${handle}: missing submission list`);
+    }
+
+    allSubmissions = allSubmissions.concat(submissions as AtcoderSubmissionResponse[]);
 
     const acceptedUniqueSubmissions = getAcceptedUniqueSubmissions(allSubmissions);
 
     const filtered: AC_Insert[] = await filterNewSolvedAtCoder(user_id, "atcoder", acceptedUniqueSubmissions);
     await addSolvedProblems(filtered); // add new solved problems to database
+    await syncAtcoderPlatformData(user_id, handle);
 }
 
 export const getAtcoderSolvedCount = async (handle: string): Promise<AtcoderCountResponse> => {
@@ -90,13 +112,23 @@ export const getAtcoderSolvedCount = async (handle: string): Promise<AtcoderCoun
     if(response.status !== 200)
         throw new Error(`Failed to fetch solved count for ${handle}: ${response.statusText}`);
 
-    const data: AtcoderCountResponse = await response.json();
+    const data = await response.json() as Partial<AtcoderCountResponse>;
 
-    if(!data)
-        throw new Error(`API error for ${handle}: ${data}`);
+    if (typeof data.count !== "number" || typeof data.rank !== "number") {
+        throw new Error(`Invalid API response for ${handle}: missing accepted count or rank`);
+    }
 
-    const rating = await fetch(ATCODER_API.endpoints.rating(handle));
-    const ratingData = await rating.json();
+    const ratingResponse = await fetch(ATCODER_API.endpoints.rating(handle));
+
+    if (ratingResponse.status !== 200) {
+        throw new Error(`Failed to fetch rating history for ${handle}: ${ratingResponse.statusText}`);
+    }
+
+    const ratingData = await ratingResponse.json();
+
+    if (!Array.isArray(ratingData)) {
+        throw new Error(`Invalid rating history response for ${handle}`);
+    }
 
     const lastEntry = ratingData[ratingData.length - 1];
     const currentRating = lastEntry ? lastEntry.NewRating : 0;

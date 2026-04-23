@@ -1,11 +1,24 @@
 import { CODEFORCES_API  } from "../config.ts";
-import type { CodeforcesResponse, CodeforcesSolvedCountResponse } from "../../types/platformResponse.ts";
+import type { CodeforcesResponse, CodeforcesSolvedCountResponse, CodeForcesUserInfoResponse } from "../../types/platformResponse.ts";
 import { filterNewSolvedCodeforces } from "../../utils/dbHelper.ts";
 import type { Database } from "../../types/db.ts"
 import { addSolvedProblems, getCodeforcesSolvedCount } from "../../repository/solvedProblems.repo.ts";
-import { get } from "node:http";
+import { upsertUserPlatformData } from "../../repository/userPlatformData.repo.ts";
 
 type CF_Insert = Database["public"]["Tables"]["solved_problems"]["Insert"]
+
+const syncCodeforcesPlatformData = async (user_id: string, handle: string): Promise<void> => {
+    const info = await getCodeforcesUserInfo(user_id, handle);
+
+    await upsertUserPlatformData({
+        user_id,
+        platform: "codeforces",
+        solved_count: info.count,
+        rating: info.rating,
+        max_rating: info.maxRating,
+        updated_at: new Date().toISOString()
+    });
+};
 
 const getAcceptedUniqueSubmissions = (submissions: CodeforcesResponse[]): CodeforcesResponse[] => {
     const seenProblems = new Set<string>();
@@ -59,6 +72,7 @@ export const getAllSubmissions = async (user_id: string, handle: string): Promis
 
     const filtered: CF_Insert[] = await filterNewSolvedCodeforces(user_id, "codeforces", acceptedUniqueSubmissions);
     await addSolvedProblems(filtered); // add new solved problems to database
+    await syncCodeforcesPlatformData(user_id, handle);
 }
 
 export const refreshCodeforces = async (user_id: string, handle: string): Promise<void> => {
@@ -84,6 +98,7 @@ export const refreshCodeforces = async (user_id: string, handle: string): Promis
     const filtered: CF_Insert[] = await filterNewSolvedCodeforces(user_id, "codeforces", acceptedUniqueSubmissions);
 
     await addSolvedProblems(filtered); // add new solved problems to database
+    await syncCodeforcesPlatformData(user_id, handle);
 }
 
 export const getCodeforcesUserInfo = async (user_id: string, handle: string): Promise<CodeforcesSolvedCountResponse> => {
@@ -93,12 +108,22 @@ export const getCodeforcesUserInfo = async (user_id: string, handle: string): Pr
     if(response.status !== 200)
         throw new Error(`Failed to fetch solved count for ${handle}: ${response.statusText}`);
 
-    const data = await response.json();
+    const data = await response.json() as { status?: string; comment?: string; result?: CodeForcesUserInfoResponse[] };
+
+    if (data.status && data.status !== "OK") {
+        throw new Error(`API error for ${handle}: ${data.comment ?? "unknown error"}`);
+    }
+
+    if (!Array.isArray(data.result) || data.result.length === 0) {
+        throw new Error(`Invalid API response for ${handle}: missing user info result`);
+    }
+
+    const userInfo = data.result[0]!;
 
     return {
         count: await getCodeforcesSolvedCount(user_id),
-        rating: data.result[0].rating || 0,
-        maxRating: data.result[0].maxRating || 0,
-        rank: data.result[0].rank || "unrated"
+        rating: userInfo.rating || 0,
+        maxRating: userInfo.maxRating || 0,
+        rank: userInfo.rank || "unrated"
     }
 }
