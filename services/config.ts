@@ -17,3 +17,61 @@ export const ATCODER_API = {
         rating: (handle: string) => `https://atcoder.jp/users/${handle}/history/json`
     }
 }
+
+export const LEETCODE_API = {
+    BASE_URL: "https://leetcode.com/graphql",
+
+    endpoints: {
+        // Get user profile + solved counts
+        userProfile: (username: string) => ({
+            query: `
+                query getUserProfile($username: String!) {
+                    matchedUser(username: $username) {
+                        username
+                        submitStats {
+                            acSubmissionNum {
+                                difficulty
+                                count
+                                submissions
+                            }
+                        }
+                    }
+                }
+            `,
+            variables: { username }
+        }),
+
+        // Get recent submissions (recently solved)
+        recentSubmissions: (username: string) => ({
+            query: `
+                query recentSubmissions($username: String!) {
+                    recentSubmissionList(username: $username) {
+                        title
+                        titleSlug
+                        timestamp
+                        statusDisplay
+                        lang
+                    }
+                }
+            `,
+            variables: { username }
+        }),
+
+        questionBySlug: (titleSlug: string) => ({
+            query: `
+                query getQuestion($titleSlug: String!) {
+                question(titleSlug: $titleSlug) {
+                    questionId
+                    title
+                    titleSlug
+                    difficulty
+                    topicTags {
+                        slug
+                    }
+                }
+                }
+            `,
+            variables: { titleSlug }
+        })
+    }
+};

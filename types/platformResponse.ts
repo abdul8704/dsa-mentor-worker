@@ -1,3 +1,5 @@
+import type { Database } from "./db.ts"
+
 export type CodeforcesResponse = {
   "id": number,
   "contestId": number,
@@ -78,3 +80,45 @@ export type AtcoderSubmissionResponse = {
   "result": string,
   "execution_time": number
 }
+
+export type LeetCodeUserProfileResponse = {
+  "matchedUser": {
+    "username": string,
+    "submitStats": {
+      "acSubmissionNum": [
+        {
+          "difficulty": string,
+          "count": number,
+          "submissions": number
+        }
+      ]
+    }
+  }
+}
+
+export type LeetCodeRecentSubmissionResponse = {
+  "id": string,
+  "title": string,
+  "titleSlug": string,
+  "timestamp": number,
+  "statusDisplay": string,
+  "lang": string
+}
+
+export type LeetCodeQuestion = {
+  "questionId": string,
+  "title": string,
+  "titleSlug": string,
+  "difficulty": string,
+  "topicTags": [
+    {
+      "slug": string
+    }
+  ]
+
+}
+
+export type GetProblemsResult = {
+  found: Record<string, LeetCodeQuestion>;
+  missing: string[];
+};

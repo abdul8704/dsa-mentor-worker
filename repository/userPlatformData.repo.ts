@@ -12,9 +12,14 @@ export const upsertUserPlatformData = async (
     throw new Error("user_id and platform are required");
   }
 
+  const values: Database["public"]["Tables"]["user_platform_data"]["Insert"] = {
+    ...row,
+    id: row.id ?? crypto.randomUUID(),
+  };
+
   const { error } = await supabase
     .from("user_platform_data")
-    .upsert(row, {
+    .upsert(values, {
       onConflict: "user_id,platform"
     });
 
