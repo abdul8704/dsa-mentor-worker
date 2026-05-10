@@ -2,10 +2,12 @@
 import { getUserPlatforms } from "../repository/userPlatform.repo.ts";
 import { getAllUsers } from "../repository/profile.repo.ts";
 import { getAllSubmissionsAtcoder, refreshAtcoder } from "../services/atcoder/client.ts";
+import { syncLeetCodePlatformData } from "../services/leetcode/client.ts";
 
 const refreshMap: Record<string, (user_id: string, handle: string) => Promise<void>> = {
-    codeforces: refreshCodeforces,
-    atcoder: refreshAtcoder
+    // codeforces: refreshCodeforces,
+    // atcoder: refreshAtcoder,
+    leetcode: syncLeetCodePlatformData
 }
 
 export const refreshAll = async (): Promise<{ success: boolean }> => {

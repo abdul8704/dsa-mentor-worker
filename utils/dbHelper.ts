@@ -192,7 +192,7 @@ export const filterNewSolvedLeetcode = async (user_id: string, platform: string,
             queuedProblemIds.add(problem_id);
             
             newProblems.push({
-                problem_id: entry.id,
+                problem_id,
                 platform,
                 rating: null,
                 tags: problemDetailsMap.found?.[entry.titleSlug]?.topicTags?.map((tag) => tag.slug.toLowerCase()) ?? [],

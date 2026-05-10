@@ -29,33 +29,31 @@ const getAcceptedUniqueSubmissions = (submissions: LeetCodeRecentSubmissionRespo
 }
 
 const refreshLeetcodeUserInfo = async (user_id: string, handle: string) => {
-    const { data } = await axios.post(LEETCODE_API.BASE_URL, {
+    const { data } = await axios.post(LEETCODE_API.BASE_URL, LEETCODE_API.endpoints.userProfile(handle), {
         headers: {
-            "content-type": "application/json"
-        },
-        body: JSON.stringify(LEETCODE_API.endpoints.userProfile(handle))
+            "Content-Type": "application/json"
+        }
     });
 
     await upsertUserPlatformData({
         user_id,
         platform: "leetcode",
-        solved_count: data.matchedUser.submitStats.acSubmissionNum.find((stat: any) => stat.difficulty === "All")?.count || 0,
-        rating: null,
-        max_rating: null,
+        solved_count: data.data.matchedUser.submitStats.acSubmissionNum.find((stat: any) => stat.difficulty === "All")?.count || 0,
+        rating: 0,
+        max_rating: 0,
         updated_at: new Date().toISOString()
     });
 }
 
 
-const syncLeetCodePlatformData = async (user_id: string, handle: string): Promise<void> => {
-    const { data } = await axios.post(LEETCODE_API.BASE_URL, {
+export const syncLeetCodePlatformData = async (user_id: string, handle: string): Promise<void> => {
+    const { data } = await axios.post(LEETCODE_API.BASE_URL, LEETCODE_API.endpoints.recentSubmissions(handle), {
         headers: {
             "Content-Type": "application/json"
-        },
-        body: JSON.stringify(LEETCODE_API.endpoints.recentSubmissions(handle))
+        }
     });
 
-    const uniqueSubmissions = getAcceptedUniqueSubmissions(data);
+    const uniqueSubmissions = getAcceptedUniqueSubmissions(data.data.recentSubmissionList);
     const filteredSubmissions: LC_Insert[] = await filterNewSolvedLeetcode(user_id, "leetcode", uniqueSubmissions);
     await addSolvedProblems(filteredSubmissions); 
     await refreshLeetcodeUserInfo(user_id, handle);
@@ -65,13 +63,12 @@ export const getProblemDetails = async (titleSlug: string[]) => {
     const detailsMap: Record<string, any> = {};
 
     for (const slug of titleSlug) {
-        const { data } = await axios.post(LEETCODE_API.BASE_URL, {
+        const { data } = await axios.post(LEETCODE_API.BASE_URL, LEETCODE_API.endpoints.questionBySlug(slug), {
             headers: {
                 "Content-Type": "application/json"
-            },
-            body: JSON.stringify(LEETCODE_API.endpoints.questionBySlug(slug))
+            }
         });
-        detailsMap[slug] = data;
+        detailsMap[slug] = data.data.question;
     }
     
     return detailsMap;
