@@ -4,10 +4,11 @@ import { filterNewSolvedCodeforces } from "../../utils/dbHelper.ts";
 import type { Database } from "../../types/db.ts"
 import { addSolvedProblems, getCodeforcesSolvedCount } from "../../repository/solvedProblems.repo.ts";
 import { upsertUserPlatformData } from "../../repository/userPlatformData.repo.ts";
+import type { PlatformSyncResult } from "../../types/response.ts";
 
 type CF_Insert = Database["public"]["Tables"]["solved_problems"]["Insert"]
 
-const syncCodeforcesPlatformData = async (user_id: string, handle: string): Promise<void> => {
+const syncCodeforcesPlatformData = async (user_id: string, handle: string): Promise<PlatformSyncResult> => {
     const info = await getCodeforcesUserInfo(user_id, handle);
 
     await upsertUserPlatformData({
@@ -18,6 +19,8 @@ const syncCodeforcesPlatformData = async (user_id: string, handle: string): Prom
         max_rating: info.maxRating,
         updated_at: new Date().toISOString()
     });
+
+    return { success: true, user_id, platform: "codeforces", newSubmissions: 0 };
 };
 
 const getAcceptedUniqueSubmissions = (submissions: CodeforcesResponse[]): CodeforcesResponse[] => {
@@ -42,7 +45,7 @@ const getAcceptedUniqueSubmissions = (submissions: CodeforcesResponse[]): Codefo
 }
 
 
-export const getAllSubmissions = async (user_id: string, handle: string): Promise<void> => {
+export const getAllSubmissions = async (user_id: string, handle: string): Promise<PlatformSyncResult> => {
     const url = CODEFORCES_API.BASE_URL;
     let start = 1, count = 100;
     let allSubmissions: CodeforcesResponse[] = [];
@@ -73,9 +76,11 @@ export const getAllSubmissions = async (user_id: string, handle: string): Promis
     const filtered: CF_Insert[] = await filterNewSolvedCodeforces(user_id, "codeforces", acceptedUniqueSubmissions);
     await addSolvedProblems(filtered); // add new solved problems to database
     await syncCodeforcesPlatformData(user_id, handle);
+
+    return { success: true, user_id, platform: "codeforces", newSubmissions: filtered.length };
 }
 
-export const refreshCodeforces = async (user_id: string, handle: string): Promise<void> => {
+export const refreshCodeforces = async (user_id: string, handle: string): Promise<PlatformSyncResult> => {
     const url = CODEFORCES_API.BASE_URL;
     let start = 1, count = 50; // get only 50 submissions
     let submissions: CodeforcesResponse[] = [];
@@ -99,6 +104,8 @@ export const refreshCodeforces = async (user_id: string, handle: string): Promis
 
     await addSolvedProblems(filtered); // add new solved problems to database
     await syncCodeforcesPlatformData(user_id, handle);
+
+    return { success: true, user_id, platform: "codeforces", newSubmissions: filtered.length };
 }
 
 export const getCodeforcesUserInfo = async (user_id: string, handle: string): Promise<CodeforcesSolvedCountResponse> => {

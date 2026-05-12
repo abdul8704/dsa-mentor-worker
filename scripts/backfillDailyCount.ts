@@ -1,6 +1,7 @@
 import { supabase } from "../db/supabase.ts";
 import { getNewSolvedCountForDate, upsertDailyCount } from "../repository/dailyCount.repo.ts";
 import { getAllUsers } from "../repository/profile.repo.ts";
+import type { BackfillUserResult, BackfillAllResult } from "../types/response.ts";
 
 /**
  * Backfill script: populates the daily_count table for each user
@@ -59,11 +60,11 @@ const getLatestDailyCountDate = async (user_id: string): Promise<string | null> 
  * Backfill daily_count for a single user.
  * Fills from earliestSolvedDate up to (latestDailyCountDate - 1), or today if none exists.
  */
-const backfillForUser = async (user_id: string): Promise<void> => {
+const backfillForUser = async (user_id: string): Promise<BackfillUserResult> => {
     const earliestDate = await getEarliestSolvedDate(user_id);
     if (!earliestDate) {
         console.log(`[Backfill] ${user_id}: no solved problems found, skipping.`);
-        return;
+        return { success: true, user_id, daysProcessed: 0 };
     }
 
     const latestDailyCount = await getLatestDailyCountDate(user_id);
@@ -73,7 +74,7 @@ const backfillForUser = async (user_id: string): Promise<void> => {
 
     if (earliestDate > endDate) {
         console.log(`[Backfill] ${user_id}: nothing to backfill (earliest=${earliestDate}, end=${endDate}).`);
-        return;
+        return { success: true, user_id, daysProcessed: 0 };
     }
 
     console.log(`[Backfill] ${user_id}: backfilling from ${earliestDate} to ${endDate}...`);
@@ -94,6 +95,7 @@ const backfillForUser = async (user_id: string): Promise<void> => {
     }
 
     console.log(`[Backfill] ${user_id}: done — ${daysProcessed} days backfilled.`);
+    return { success: true, user_id, daysProcessed };
 };
 
 // --- Main ---

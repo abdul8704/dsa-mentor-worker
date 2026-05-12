@@ -1,5 +1,6 @@
 import { supabase } from "../db/supabase.ts";
 import type { Database } from "../types/db.ts";
+import type { UpsertStreakResult } from "../types/response.ts";
 
 type UserStreakRow = Database["public"]["Tables"]["user-streak"]["Row"];
 
@@ -37,7 +38,7 @@ export const upsertUserStreak = async (
     curr_streak: number,
     longest_streak: number,
     updated_on: string
-): Promise<void> => {
+): Promise<UpsertStreakResult> => {
     const { error } = await supabase
         .from("user-streak")
         .upsert(
@@ -47,4 +48,6 @@ export const upsertUserStreak = async (
 
     if (error)
         throw new Error(`Error upserting streak for ${user_id}: ${error.message}`);
+
+    return { success: true, user_id, curr_streak, longest_streak, updated_on };
 };

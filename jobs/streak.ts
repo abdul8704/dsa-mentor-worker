@@ -1,6 +1,7 @@
 import { getDailyCounts } from "../repository/dailyCount.repo.ts";
 import { getUserStreak, upsertUserStreak } from "../repository/streak.repo.ts";
 import { getAllUsers } from "../repository/profile.repo.ts";
+import type { StreakUserResult, StreakAllResult } from "../types/response.ts";
 
 /**
  * Get today's date in UTC as YYYY-MM-DD.
@@ -30,7 +31,7 @@ const addDays = (dateStr: string, days: number): string => {
  * 5. Final longest_streak = max(longest, curr).
  * 6. Upsert to user-streak with updated_on = today.
  */
-export const updateStreakForUser = async (user_id: string): Promise<void> => {
+export const updateStreakForUser = async (user_id: string): Promise<StreakUserResult> => {
     const today = getTodayUTC();
     const yesterday = addDays(today, -1);
 
@@ -53,7 +54,7 @@ export const updateStreakForUser = async (user_id: string): Promise<void> => {
     } else if (updatedOn >= today) {
         // Already updated today, nothing to do
         console.log(`[Streak] ${user_id}: already updated today (${today})`);
-        return;
+        return { success: true, user_id, curr_streak: currStreak, longest_streak: longestStreak };
     } else {
         // Start from the day after last update
         scanStart = addDays(updatedOn, 1);
@@ -103,18 +104,22 @@ export const updateStreakForUser = async (user_id: string): Promise<void> => {
     console.log(
         `[Streak] ${user_id}: curr=${currStreak}, longest=${longestStreak}, updated=${today}`
     );
+
+    return { success: true, user_id, curr_streak: currStreak, longest_streak: longestStreak };
 };
 
 /**
  * Compute and update streaks for all users.
  */
-export const updateStreakForAllUsers = async (): Promise<void> => {
+export const updateStreakForAllUsers = async (): Promise<StreakAllResult> => {
     const users = await getAllUsers();
+    let failed = 0;
 
     for (const user_id of users) {
         try {
             await updateStreakForUser(user_id);
         } catch (error) {
+            failed++;
             if (error instanceof Error) {
                 console.error(`[Streak] Failed for ${user_id}: ${error.message}`);
             } else {
@@ -122,4 +127,6 @@ export const updateStreakForAllUsers = async (): Promise<void> => {
             }
         }
     }
+
+    return { success: failed === 0, processed: users.length, failed };
 };

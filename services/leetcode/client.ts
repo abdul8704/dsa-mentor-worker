@@ -5,6 +5,7 @@ import type { Database } from "../../types/db.ts"
 import { addSolvedProblems, getCodeforcesSolvedCount } from "../../repository/solvedProblems.repo.ts";
 import { upsertUserPlatformData } from "../../repository/userPlatformData.repo.ts";
 import axios from "axios";
+import type { PlatformSyncResult } from "../../types/response.ts";
 
 type LC_Insert = Database["public"]["Tables"]["solved_problems"]["Insert"]
 
@@ -46,7 +47,7 @@ const refreshLeetcodeUserInfo = async (user_id: string, handle: string) => {
 }
 
 
-export const syncLeetCodePlatformData = async (user_id: string, handle: string): Promise<void> => {
+export const syncLeetCodePlatformData = async (user_id: string, handle: string): Promise<PlatformSyncResult> => {
     const { data } = await axios.post(LEETCODE_API.BASE_URL, LEETCODE_API.endpoints.recentSubmissions(handle), {
         headers: {
             "Content-Type": "application/json"
@@ -57,7 +58,9 @@ export const syncLeetCodePlatformData = async (user_id: string, handle: string):
     const filteredSubmissions: LC_Insert[] = await filterNewSolvedLeetcode(user_id, "leetcode", uniqueSubmissions);
     await addSolvedProblems(filteredSubmissions); 
     await refreshLeetcodeUserInfo(user_id, handle);
-} 
+
+    return { success: true, user_id, platform: "leetcode", newSubmissions: filteredSubmissions.length };
+}
 
 export const getProblemDetails = async (titleSlug: string[]) => {
     const detailsMap: Record<string, any> = {};

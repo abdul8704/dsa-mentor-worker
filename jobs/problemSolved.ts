@@ -1,12 +1,13 @@
-﻿import { refreshCodeforces, getAllSubmissions } from "../services/codeforces/client.ts";
+import { refreshCodeforces, getAllSubmissions } from "../services/codeforces/client.ts";
 import { getUserPlatforms } from "../repository/userPlatform.repo.ts";
 import { getAllUsers } from "../repository/profile.repo.ts";
 import { getAllSubmissionsAtcoder, refreshAtcoder } from "../services/atcoder/client.ts";
 import { syncLeetCodePlatformData } from "../services/leetcode/client.ts";
 import { updateDailyCountForAllUsers } from "./dailyCount.ts";
 import { updateStreakForAllUsers } from "./streak.ts";
+import type { PlatformSyncResult } from "../types/response.ts";
 
-const refreshMap: Record<string, (user_id: string, handle: string) => Promise<void>> = {
+const refreshMap: Record<string, (user_id: string, handle: string) => Promise<PlatformSyncResult>> = {
     codeforces: refreshCodeforces,
     atcoder: refreshAtcoder,
     leetcode: syncLeetCodePlatformData

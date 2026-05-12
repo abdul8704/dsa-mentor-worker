@@ -1,5 +1,6 @@
 import { supabase } from "../db/supabase.ts";
 import type { Database } from "../types/db.ts";
+import type { UpsertPlatformDataResult } from "../types/response.ts";
 
 export type UserPlatformDataInsert = Omit<Database["public"]["Tables"]["user_platform_data"]["Insert"], "id"> & {
     id?: string;
@@ -7,7 +8,7 @@ export type UserPlatformDataInsert = Omit<Database["public"]["Tables"]["user_pla
 
 export const upsertUserPlatformData = async (
   row: UserPlatformDataInsert
-): Promise<void> => {
+): Promise<UpsertPlatformDataResult> => {
   if (!row.user_id || !row.platform) {
     throw new Error("user_id and platform are required");
   }
@@ -28,4 +29,6 @@ export const upsertUserPlatformData = async (
       `Error while upserting user codeforces data for ${row.user_id}: ${error.message}`
     );
   }
+
+  return { success: true, user_id: row.user_id, platform: row.platform };
 };

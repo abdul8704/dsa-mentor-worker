@@ -4,10 +4,11 @@ import type { Database } from "../../types/db.ts"
 import { ATCODER_API, CODEFORCES_API } from "../config.ts";
 import { addSolvedProblems } from "../../repository/solvedProblems.repo.ts";
 import { upsertUserPlatformData } from "../../repository/userPlatformData.repo.ts";
+import type { PlatformSyncResult } from "../../types/response.ts";
 
 type AC_Insert = Database["public"]["Tables"]["solved_problems"]["Insert"]
 
-const syncAtcoderPlatformData = async (user_id: string, handle: string): Promise<void> => {
+const syncAtcoderPlatformData = async (user_id: string, handle: string): Promise<PlatformSyncResult> => {
     const info = await getAtcoderSolvedCount(handle);
 
     await upsertUserPlatformData({
@@ -18,6 +19,8 @@ const syncAtcoderPlatformData = async (user_id: string, handle: string): Promise
         max_rating: info.maxRating,
         updated_at: new Date().toISOString()
     });
+
+    return { success: true, user_id, platform: "atcoder", newSubmissions: 0 };
 };
 
 const getAcceptedUniqueSubmissions = (submissions: AtcoderSubmissionResponse[]): AtcoderSubmissionResponse[] => {
@@ -42,7 +45,7 @@ const getAcceptedUniqueSubmissions = (submissions: AtcoderSubmissionResponse[]):
     });
 }
 
-export const getAllSubmissionsAtcoder = async (user_id: string, handle: string): Promise<void> => {
+export const getAllSubmissionsAtcoder = async (user_id: string, handle: string): Promise<PlatformSyncResult> => {
     const url = ATCODER_API.BASE_URL;
     let startTime = 0;
     let allSubmissions: AtcoderSubmissionResponse[] = [];
@@ -72,9 +75,11 @@ export const getAllSubmissionsAtcoder = async (user_id: string, handle: string):
     const filtered: AC_Insert[] = await filterNewSolvedAtCoder(user_id, "atcoder", acceptedUniqueSubmissions);
     await addSolvedProblems(filtered); // add new solved problems to database
     await syncAtcoderPlatformData(user_id, handle);
+
+    return { success: true, user_id, platform: "atcoder", newSubmissions: filtered.length };
 }
 
-export const refreshAtcoder = async (user_id: string, handle: string): Promise<void> => {
+export const refreshAtcoder = async (user_id: string, handle: string): Promise<PlatformSyncResult> => {
     const url = ATCODER_API.BASE_URL;
     let startTime = Math.floor(Date.now() / 1000) - 86400; // fetch submissions from the last 24 hours
     let allSubmissions: AtcoderSubmissionResponse[] = [];
@@ -103,6 +108,8 @@ export const refreshAtcoder = async (user_id: string, handle: string): Promise<v
     const filtered: AC_Insert[] = await filterNewSolvedAtCoder(user_id, "atcoder", acceptedUniqueSubmissions);
     await addSolvedProblems(filtered); // add new solved problems to database
     await syncAtcoderPlatformData(user_id, handle);
+
+    return { success: true, user_id, platform: "atcoder", newSubmissions: filtered.length };
 }
 
 export const getAtcoderSolvedCount = async (handle: string): Promise<AtcoderCountResponse> => {

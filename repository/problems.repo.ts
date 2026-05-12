@@ -1,6 +1,7 @@
 import { supabase } from "../db/supabase.ts";
 import type { Database } from "../types/db.ts"
 import type { GetProblemsResult } from "../types/platformResponse.ts";
+import type { AddProblemsResult } from "../types/response.ts";
 
 type ProblemEntry = Database["public"]["Tables"]["problems"]["Insert"]
 
@@ -19,9 +20,9 @@ export const getAllProbs = async (): Promise<Set<string>> => {
     return problemSet;
 }
 
-export const addProbs = async (probs: ProblemEntry[]): Promise<void> => {
+export const addProbs = async (probs: ProblemEntry[]): Promise<AddProblemsResult> => {
     if (probs.length === 0) {
-        return;
+        return { success: true, count: 0 };
     }
 
     const { error } = await supabase
@@ -33,6 +34,8 @@ export const addProbs = async (probs: ProblemEntry[]): Promise<void> => {
 
     if (error)
         throw new Error(`Error while adding new problems ${error.message}`);
+
+    return { success: true, count: probs.length };
 }
 
 export const getLeetCodeProbsBySlug = async (

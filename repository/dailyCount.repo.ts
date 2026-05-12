@@ -1,4 +1,5 @@
 import { supabase } from "../db/supabase.ts";
+import type { UpsertDailyCountResult } from "../types/response.ts";
 
 /**
  * Count new problems solved by a user on a specific date.
@@ -23,7 +24,7 @@ export const getNewSolvedCountForDate = async (user_id: string, date: string): P
  * Upsert a daily count entry. If a row for (user_id, date) exists, update it.
  * Otherwise insert a new row.
  */
-export const upsertDailyCount = async (user_id: string, date: string, solved: number): Promise<void> => {
+export const upsertDailyCount = async (user_id: string, date: string, solved: number): Promise<UpsertDailyCountResult> => {
     const { error } = await supabase
         .from("daily_count")
         .upsert(
@@ -33,6 +34,8 @@ export const upsertDailyCount = async (user_id: string, date: string, solved: nu
 
     if (error)
         throw new Error(`Error upserting daily count for ${user_id} on ${date}: ${error.message}`);
+
+    return { success: true, user_id, date, solved };
 };
 
 /**

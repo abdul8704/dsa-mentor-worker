@@ -1,6 +1,7 @@
 import { supabase } from "../db/supabase.ts";
 import type { Database } from "../types/db.ts"
 import type { CodeforcesSolvedCountResponse } from "../types/platformResponse.ts";
+import type { AddSolvedProblemsResult } from "../types/response.ts";
 
 type CF_Insert = Database["public"]["Tables"]["solved_problems"]["Insert"]
 
@@ -36,14 +37,18 @@ export const getUserSolvedProblemsByDate = async (userid: string): Promise<Set<s
     return solvedSet;
 }
 
-export const addSolvedProblems = async (problems: CF_Insert[]) => {
+export const addSolvedProblems = async (problems: CF_Insert[]): Promise<AddSolvedProblemsResult> => {
+    if (problems.length === 0) {
+        return { success: true, insertedCount: 0 };
+    }
+
     const { error } = await supabase                                
                                 .from("solved_problems")
                                 .insert(problems);
     if(error)        
         throw new Error(`Error while inserting solved problems ${error.message}`);
 
-    return { success: true };
+    return { success: true, insertedCount: problems.length };
 }
 
 export const getCodeforcesSolvedCount = async (user_id: string): Promise<number> => {
