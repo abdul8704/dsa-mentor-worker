@@ -3,10 +3,12 @@ import { getUserPlatforms } from "../repository/userPlatform.repo.ts";
 import { getAllUsers } from "../repository/profile.repo.ts";
 import { getAllSubmissionsAtcoder, refreshAtcoder } from "../services/atcoder/client.ts";
 import { syncLeetCodePlatformData } from "../services/leetcode/client.ts";
+import { updateDailyCountForAllUsers } from "./dailyCount.ts";
+import { updateStreakForAllUsers } from "./streak.ts";
 
 const refreshMap: Record<string, (user_id: string, handle: string) => Promise<void>> = {
-    // codeforces: refreshCodeforces,
-    // atcoder: refreshAtcoder,
+    codeforces: refreshCodeforces,
+    atcoder: refreshAtcoder,
     leetcode: syncLeetCodePlatformData
 }
 
@@ -62,4 +64,15 @@ export const refreshUser = async (user_id: string): Promise<boolean> => {
     }
 }
 
-await refreshAll();
+// Pipeline: sync platforms → compute daily counts → compute streaks
+const result = await refreshAll();
+console.log(`[Refresh] completed: success=${result.success}`);
+
+console.log("[DailyCount] Starting daily count computation...");
+await updateDailyCountForAllUsers();
+console.log("[DailyCount] Done.");
+
+console.log("[Streak] Starting streak computation...");
+await updateStreakForAllUsers();
+console.log("[Streak] Done.");
+
