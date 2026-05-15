@@ -51,6 +51,49 @@ export const addSolvedProblems = async (problems: CF_Insert[]): Promise<AddSolve
     return { success: true, insertedCount: problems.length };
 }
 
+export const getSolvedCountsByDateInRange = async (
+    user_id: string,
+    fromDate: string,
+    toDate: string
+): Promise<Map<string, number>> => {
+    const counts = new Map<string, number>();
+    const pageSize = 1000;
+    let offset = 0;
+
+    while (true) {
+        const { data, error } = await supabase
+            .from("solved_problems")
+            .select("solved_date")
+            .eq("user_id", user_id)
+            .gte("solved_date", fromDate)
+            .lte("solved_date", toDate)
+            .range(offset, offset + pageSize - 1);
+
+        if (error) {
+            throw new Error(`Error fetching solved problems for heatmap: ${error.message}`);
+        }
+
+        if (!data.length) {
+            break;
+        }
+
+        for (const row of data) {
+            if (!row.solved_date) {
+                continue;
+            }
+            counts.set(row.solved_date, (counts.get(row.solved_date) ?? 0) + 1);
+        }
+
+        if (data.length < pageSize) {
+            break;
+        }
+
+        offset += pageSize;
+    }
+
+    return counts;
+};
+
 export const getCodeforcesSolvedCount = async (user_id: string): Promise<number> => {
     const { data, error } = await supabase
         .from("solved_problems")

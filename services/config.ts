@@ -72,6 +72,24 @@ export const LEETCODE_API = {
                 }
             `,
             variables: { titleSlug }
+        }),
+
+        // Get user contest ranking history
+        contestHistory: (username: string) => ({
+            query: `
+                query userContestRankingHistory($username: String!) {
+                    userContestRankingHistory(username: $username) {
+                        attended
+                        rating
+                        ranking
+                        contest {
+                            title
+                            startTime
+                        }
+                    }
+                }
+            `,
+            variables: { username }
         })
     }
 };

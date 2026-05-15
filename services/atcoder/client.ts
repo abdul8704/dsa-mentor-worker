@@ -1,10 +1,11 @@
-import type { AtcoderCountResponse, AtcoderSubmissionResponse, CodeforcesResponse } from "../../types/platformResponse.ts";
+import type { AtcoderContestHistory, AtcoderCountResponse, AtcoderSubmissionResponse, CodeforcesResponse } from "../../types/platformResponse.ts";
 import { filterNewSolvedAtCoder } from "../../utils/dbHelper.ts";
 import type { Database } from "../../types/db.ts"
 import { ATCODER_API, CODEFORCES_API } from "../config.ts";
 import { addSolvedProblems } from "../../repository/solvedProblems.repo.ts";
 import { upsertUserPlatformData } from "../../repository/userPlatformData.repo.ts";
-import type { PlatformSyncResult } from "../../types/response.ts";
+import type { ContestSyncResult, PlatformSyncResult } from "../../types/response.ts";
+import { getUserContestIds, upsertUserContests, type UserContestInsert } from "../../repository/userContest.repo.ts";
 
 type AC_Insert = Database["public"]["Tables"]["solved_problems"]["Insert"]
 
@@ -148,4 +149,35 @@ export const getAtcoderSolvedCount = async (handle: string): Promise<AtcoderCoun
         rating: currentRating,
         maxRating: maxRating
     };
+}
+
+export const refreshAtcoderContests = async (user_id: string, handle: string): Promise<ContestSyncResult> => {
+    const response = await fetch(ATCODER_API.endpoints.rating(handle));
+
+    if (response.status !== 200) {
+        throw new Error(`Failed to fetch contest history for ${handle}: ${response.statusText}`);
+    }
+
+    const data = await response.json() as AtcoderContestHistory[];
+
+    if (!Array.isArray(data)) {
+        throw new Error(`Invalid contest history response for ${handle}`);
+    }
+
+    const existing = await getUserContestIds(user_id, "atcoder");
+    const rows: UserContestInsert[] = data.map((entry) => ({
+        user_id,
+        platform: "atcoder",
+        contest_id: `ATC-${entry.ContestScreenName}`,
+        date: entry.EndTime,
+        rank: entry.Place,
+        rating: entry.NewRating,
+    }));
+
+    const newCount = rows.filter((row) => !existing.has(row.contest_id)).length;
+    await upsertUserContests(rows);
+
+    console.log(`Synced ${rows.length} AtCoder contests for ${handle} (${newCount} new)`);
+
+    return { success: true, user_id, platform: "atcoder", contestsSynced: newCount };
 }

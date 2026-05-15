@@ -109,3 +109,27 @@ export type BackfillAllResult = {
     processed: number;
     failed: number;
 };
+
+// ─── Repository: user_contest ─────────────────────────────────────────
+
+export type UpsertUserContestsResult = {
+    success: boolean;
+    upsertedCount: number;
+};
+
+// ─── Services: contest sync ───────────────────────────────────────────
+
+export type ContestSyncResult = {
+    success: boolean;
+    user_id: string;
+    platform: string;
+    contestsSynced: number;
+};
+
+// ─── Jobs: contestRefresh ─────────────────────────────────────────────
+
+export type ContestRefreshAllResult = {
+    success: boolean;
+    processed: number;
+    failed: number;
+};

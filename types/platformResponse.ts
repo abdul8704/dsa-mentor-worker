@@ -122,3 +122,36 @@ export type GetProblemsResult = {
   found: Record<string, LeetCodeQuestion>;
   missing: string[];
 };
+
+export type CodeforcesRatingChange = {
+  contestId: number;
+  contestName: string;
+  handle: string;
+  rank: number;
+  ratingUpdateTimeSeconds: number;
+  oldRating: number;
+  newRating: number;
+};
+
+export type AtcoderContestHistory = {
+  IsRated: boolean;
+  Place: number;
+  OldRating: number;
+  NewRating: number;
+  Performance: number;
+  InnerPerformance: number;
+  ContestScreenName: string;
+  ContestName: string;
+  ContestNameEn: string;
+  EndTime: string;
+};
+
+export type LeetCodeContestHistory = {
+  attended: boolean;
+  rating: number;
+  ranking: number;
+  contest: {
+    title: string;
+    startTime: number;
+  };
+};

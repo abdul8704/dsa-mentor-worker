@@ -1,10 +1,11 @@
 import { CODEFORCES_API  } from "../config.ts";
-import type { CodeforcesResponse, CodeforcesSolvedCountResponse, CodeForcesUserInfoResponse } from "../../types/platformResponse.ts";
+import type { CodeforcesRatingChange, CodeforcesResponse, CodeforcesSolvedCountResponse, CodeForcesUserInfoResponse } from "../../types/platformResponse.ts";
 import { filterNewSolvedCodeforces } from "../../utils/dbHelper.ts";
 import type { Database } from "../../types/db.ts"
 import { addSolvedProblems, getCodeforcesSolvedCount } from "../../repository/solvedProblems.repo.ts";
 import { upsertUserPlatformData } from "../../repository/userPlatformData.repo.ts";
-import type { PlatformSyncResult } from "../../types/response.ts";
+import type { ContestSyncResult, PlatformSyncResult } from "../../types/response.ts";
+import { getUserContestIds, upsertUserContests, type UserContestInsert } from "../../repository/userContest.repo.ts";
 
 type CF_Insert = Database["public"]["Tables"]["solved_problems"]["Insert"]
 
@@ -133,4 +134,40 @@ export const getCodeforcesUserInfo = async (user_id: string, handle: string): Pr
         maxRating: userInfo.maxRating || 0,
         rank: userInfo.rank || "unrated"
     }
+}
+
+export const refreshCodeforcesContests = async (user_id: string, handle: string): Promise<ContestSyncResult> => {
+    const url = CODEFORCES_API.BASE_URL + CODEFORCES_API.endpoints.userRating(handle);
+    const response = await fetch(url);
+
+    if (response.status !== 200) {
+        throw new Error(`Failed to fetch contest history for ${handle}: ${response.statusText}`);
+    }
+
+    const data = await response.json() as { status?: string; comment?: string; result?: CodeforcesRatingChange[] };
+
+    if (data.status && data.status !== "OK") {
+        throw new Error(`API error for ${handle}: ${data.comment ?? "unknown error"}`);
+    }
+
+    if (!Array.isArray(data.result)) {
+        throw new Error(`Invalid API response for ${handle}: missing rating history`);
+    }
+
+    const existing = await getUserContestIds(user_id, "codeforces");
+    const rows: UserContestInsert[] = data.result.map((entry) => ({
+        user_id,
+        platform: "codeforces",
+        contest_id: `CF-${entry.contestId}`,
+        date: new Date(entry.ratingUpdateTimeSeconds * 1000).toISOString(),
+        rank: entry.rank,
+        rating: entry.newRating,
+    }));
+
+    const newCount = rows.filter((row) => !existing.has(row.contest_id)).length;
+    await upsertUserContests(rows);
+
+    console.log(`Synced ${rows.length} Codeforces contests for ${handle} (${newCount} new)`);
+
+    return { success: true, user_id, platform: "codeforces", contestsSynced: newCount };
 }
