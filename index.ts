@@ -8,7 +8,7 @@ const app = express();
 
 app.use(
   cors({
-    origin: "http://localhost:3000", // Next.js frontend
+    origin: ["http://localhost:3000", "https://dsa-mentor-seven.vercel.app/"], // Next.js frontend
     credentials: true,
   })
 );
