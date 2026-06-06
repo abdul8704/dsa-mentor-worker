@@ -73,6 +73,10 @@ export const refreshUserContests = async (user_id: string): Promise<boolean> => 
         return false;
     }
 };
+// Only run when executed directly (not imported)
+const isMainModule = import.meta.url === `file:///${process.argv[1]?.replace(/\\/g, "/")}`;
 
-const result = await refreshAllContests();
-console.log(`[ContestRefresh] completed: success=${result.success} processed=${result.processed} failed=${result.failed}`);
+if (isMainModule) {
+    const result = await refreshAllContests();
+    console.log(`[ContestRefresh] completed: success=${result.success} processed=${result.processed} failed=${result.failed}`);
+}

@@ -33,17 +33,43 @@ const getAcceptedUniqueSubmissions = (submissions: LeetCodeRecentSubmissionRespo
     });
 }
 
-const refreshLeetcodeUserInfo = async (user_id: string, handle: string) => {
+export type LeetCodeDifficultyCounts = {
+    easy: number;
+    medium: number;
+    hard: number;
+    total: number;
+};
+
+/**
+ * Fetches per-difficulty solved counts directly from LeetCode's API.
+ */
+export const getLeetCodeDifficultyCounts = async (handle: string): Promise<LeetCodeDifficultyCounts> => {
     const { data } = await axios.post(LEETCODE_API.BASE_URL, LEETCODE_API.endpoints.userProfile(handle), {
         headers: {
             "Content-Type": "application/json"
         }
     });
 
+    const stats = data.data.matchedUser.submitStats.acSubmissionNum as { difficulty: string; count: number }[];
+
+    return {
+        easy: stats.find((s) => s.difficulty === "Easy")?.count || 0,
+        medium: stats.find((s) => s.difficulty === "Medium")?.count || 0,
+        hard: stats.find((s) => s.difficulty === "Hard")?.count || 0,
+        total: stats.find((s) => s.difficulty === "All")?.count || 0,
+    };
+};
+
+const refreshLeetcodeUserInfo = async (user_id: string, handle: string) => {
+    const counts = await getLeetCodeDifficultyCounts(handle);
+
     await upsertUserPlatformData({
         user_id,
         platform: "leetcode",
-        solved_count: data.data.matchedUser.submitStats.acSubmissionNum.find((stat: any) => stat.difficulty === "All")?.count || 0,
+        solved_count: counts.total,
+        easy: counts.easy,
+        medium: counts.medium,
+        hard: counts.hard,
         rating: 0,
         max_rating: 0,
         updated_at: new Date().toISOString()
@@ -111,4 +137,42 @@ export const refreshLeetCodeContests = async (user_id: string, handle: string): 
     console.log(`Synced ${rows.length} LeetCode contests for ${handle} (${newCount} new)`);
 
     return { success: true, user_id, platform: "leetcode", contestsSynced: newCount };
+}
+
+export type LeetCodeHeatmapResult = {
+    heatmap: Map<string, number>;
+    streak: number;
+};
+
+/**
+ * Fetches LeetCode's submission calendar (heatmap) and current streak
+ * via the official GraphQL API.
+ */
+export const getLeetCodeHeatmap = async (handle: string): Promise<LeetCodeHeatmapResult> => {
+    const { data } = await axios.post(LEETCODE_API.BASE_URL, LEETCODE_API.endpoints.submissionCalendar(handle), {
+        headers: {
+            "Content-Type": "application/json",
+        },
+    });
+
+    const userCalendar = data?.data?.matchedUser?.userCalendar;
+    const calendarJson = userCalendar?.submissionCalendar;
+    const streak: number = userCalendar?.streak ?? 0;
+
+    if (!calendarJson || typeof calendarJson !== "string") {
+        throw new Error(`Invalid submission calendar response for ${handle}`);
+    }
+
+    // submissionCalendar is a JSON string: { "unix_timestamp": count, ... }
+    const parsed = JSON.parse(calendarJson) as Record<string, number>;
+    const heatmap = new Map<string, number>();
+
+    for (const [timestamp, count] of Object.entries(parsed)) {
+        if (count <= 0) continue;
+        const date = new Date(Number(timestamp) * 1000).toISOString().split("T")[0]!;
+        // Sum in case multiple timestamps map to the same date
+        heatmap.set(date, (heatmap.get(date) ?? 0) + count);
+    }
+
+    return { heatmap, streak };
 }

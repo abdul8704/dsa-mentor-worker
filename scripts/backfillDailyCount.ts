@@ -99,9 +99,9 @@ const backfillForUser = async (user_id: string): Promise<BackfillUserResult> => 
 };
 
 // --- Main ---
-const main = async () => {
+export const backfillMain = async (user_id?: string) => {
     console.log("[Backfill] Starting daily_count backfill...");
-    const users = await getAllUsers();
+    const users = user_id ? [user_id] : await getAllUsers();
 
     for (const user_id of users) {
         try {
@@ -118,4 +118,3 @@ const main = async () => {
     console.log("[Backfill] All done.");
 };
 
-await main();

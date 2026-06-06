@@ -90,6 +90,21 @@ export const LEETCODE_API = {
                 }
             `,
             variables: { username }
+        }),
+
+        // Get user submission calendar (heatmap data) + streak
+        submissionCalendar: (username: string) => ({
+            query: `
+                query userProfileCalendar($username: String!, $year: Int) {
+                    matchedUser(username: $username) {
+                        userCalendar(year: $year) {
+                            streak
+                            submissionCalendar
+                        }
+                    }
+                }
+            `,
+            variables: { username }
         })
     }
 };
