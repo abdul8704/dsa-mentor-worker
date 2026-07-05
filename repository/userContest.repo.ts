@@ -18,6 +18,18 @@ export const getUserContestIds = async (user_id: string, platform: string): Prom
     return new Set(data.map((row) => row.contest_id));
 };
 
+export const deleteUserContestsForPlatform = async (user_id: string, platform: string): Promise<void> => {
+    const { error } = await supabase
+        .from("user_contest")
+        .delete()
+        .eq("user_id", user_id)
+        .eq("platform", platform);
+
+    if (error) {
+        throw new Error(`Error while deleting user contests for ${user_id}/${platform}: ${error.message}`);
+    }
+};
+
 export const upsertUserContests = async (rows: UserContestInsert[]): Promise<UpsertUserContestsResult> => {
     if (rows.length === 0) {
         return { success: true, upsertedCount: 0 };

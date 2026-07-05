@@ -6,6 +6,20 @@ export type UserPlatformDataInsert = Omit<Database["public"]["Tables"]["user_pla
     id?: string;
 };
 
+export const deleteUserPlatformData = async (user_id: string, platform: string): Promise<void> => {
+  const { error } = await supabase
+    .from("user_platform_data")
+    .delete()
+    .eq("user_id", user_id)
+    .eq("platform", platform);
+
+  if (error) {
+    throw new Error(
+      `Error while deleting user platform data for ${user_id}/${platform}: ${error.message}`
+    );
+  }
+};
+
 export const upsertUserPlatformData = async (
   row: UserPlatformDataInsert
 ): Promise<UpsertPlatformDataResult> => {

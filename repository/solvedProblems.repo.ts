@@ -37,6 +37,17 @@ export const getUserSolvedProblemsByDate = async (userid: string): Promise<Set<s
     return solvedSet;
 }
 
+export const deleteSolvedProblemsForPlatform = async (user_id: string, platform: string): Promise<void> => {
+    const { error } = await supabase
+        .from("solved_problems")
+        .delete()
+        .eq("user_id", user_id)
+        .eq("platform", platform);
+
+    if (error)
+        throw new Error(`Error while deleting solved problems for ${user_id}/${platform}: ${error.message}`);
+}
+
 export const addSolvedProblems = async (problems: CF_Insert[]): Promise<AddSolvedProblemsResult> => {
     if (problems.length === 0) {
         return { success: true, insertedCount: 0 };

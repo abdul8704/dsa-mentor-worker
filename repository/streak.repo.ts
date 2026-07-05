@@ -30,6 +30,19 @@ export const getUserStreak = async (
 };
 
 /**
+ * Delete the user's streak row so it can be recomputed from scratch.
+ */
+export const deleteUserStreak = async (user_id: string): Promise<void> => {
+    const { error } = await supabase
+        .from("user-streak")
+        .delete()
+        .eq("user_id", user_id);
+
+    if (error)
+        throw new Error(`Error deleting streak for ${user_id}: ${error.message}`);
+};
+
+/**
  * Upsert the user's streak data. If a row for user_id exists, update it.
  * Otherwise insert a new row.
  */

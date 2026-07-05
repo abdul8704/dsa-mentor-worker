@@ -1,8 +1,10 @@
 import { Router } from "express";
 import { refreshUser, setupUser } from "../jobs/problemSolved.ts";
+import { resyncAfterHandleChange } from "../jobs/handleChange.ts";
 import { refreshUserContests } from "../jobs/contestRefresh.ts";
 import { updateDailyCountForUser } from "../jobs/dailyCount.ts";
 import { updateStreakForUser } from "../jobs/streak.ts";
+import { syncAssignmentCompletions } from "../jobs/assignmentSync.ts";
 import { getStaleUsers, updateLastRefreshed } from "../repository/profile.repo.ts";
 import { platformMain } from "../scripts/refreshPlatformData.ts";
 import { heatMapMain } from "../scripts/refreshHeatmap.ts";
@@ -42,6 +44,8 @@ const runFullRefreshForUser = async (user_id: string): Promise<{ success: boolea
         { name: "ContestSync", fn: () => refreshUserContests(user_id) },
         { name: "DailyCount", fn: () => updateDailyCountForUser(user_id) },
         { name: "Streak", fn: () => updateStreakForUser(user_id) },
+        // Auto-complete assignments once the freshest solved data is in.
+        { name: "AssignmentSync", fn: () => syncAssignmentCompletions(user_id) },
     ];
 
     const errors: string[] = [];
@@ -158,6 +162,48 @@ refreshRouter.post("/stale", async (_req, res) => {
         const message = error instanceof Error ? error.message : "Internal server error";
         res.status(500).json({ error: message });
     }
+});
+
+// ──────────────────────────────────────────────────────
+// POST /refresh/handle-change — Purge + re-import data for
+// platforms whose handle was just changed (or newly added),
+// then rebuild all derived aggregates so the DB is consistent.
+// Body: { "user_id": "...", "platforms": ["codeforces", ...] }
+// ──────────────────────────────────────────────────────
+refreshRouter.post("/handle-change", async (req, res) => {
+    const user_id = req.body?.user_id;
+    const platforms = req.body?.platforms;
+
+    if (typeof user_id !== "string" || !user_id.trim()) {
+        res.status(400).json({ error: "user_id is required in the request body" });
+        return;
+    }
+
+    if (!Array.isArray(platforms) || platforms.some((p) => typeof p !== "string")) {
+        res.status(400).json({ error: "platforms must be an array of strings" });
+        return;
+    }
+
+    const cleanedPlatforms = [...new Set(platforms.map((p: string) => p.trim()).filter(Boolean))];
+
+    console.log(`[HandleChange] POST /refresh/handle-change — user_id=${user_id} platforms=${cleanedPlatforms.join(", ")}`);
+
+    if (cleanedPlatforms.length === 0) {
+        res.json({ success: true, message: "No platforms to resync" });
+        return;
+    }
+
+    // Fire-and-forget: the resync involves external API calls and can be slow.
+    // Respond immediately so the client isn't blocked; the worker finishes in
+    // the background.
+    resyncAfterHandleChange(user_id.trim(), cleanedPlatforms)
+        .then(() => console.log(`[HandleChange] Background resync done for ${user_id}`))
+        .catch((error) => {
+            const message = error instanceof Error ? error.message : String(error);
+            console.error(`[HandleChange] Background resync failed for ${user_id}: ${message}`);
+        });
+
+    res.json({ success: true, message: "Handle-change resync started", platforms: cleanedPlatforms });
 });
 
 refreshRouter.post("/fresh-init", async (req, res) => {

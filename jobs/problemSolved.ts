@@ -5,6 +5,7 @@ import { getAllSubmissionsAtcoder, refreshAtcoder } from "../services/atcoder/cl
 import { syncLeetCodePlatformData } from "../services/leetcode/client.ts";
 import { updateDailyCountForAllUsers } from "./dailyCount.ts";
 import { updateStreakForAllUsers } from "./streak.ts";
+import { syncAssignmentCompletions } from "./assignmentSync.ts";
 import type { PlatformSyncResult } from "../types/response.ts";
 
 const refreshMap: Record<string, (user_id: string, handle: string) => Promise<PlatformSyncResult>> = {
@@ -19,12 +20,16 @@ const setUpUserMap: Record<string, (user_id: string, handle: string) => Promise<
     leetcode: syncLeetCodePlatformData
 }
 
-export const setupUser = async (user_id: string): Promise<boolean> => {
+export const setupUser = async (user_id: string, onlyPlatforms?: string[]): Promise<boolean> => {
     try {
         const userPlatforms: Record<string, string> = await getUserPlatforms(user_id);
         let allPlatformsSucceeded = true;
 
         for (const [platform, handle] of Object.entries(userPlatforms)) {
+            if (onlyPlatforms && !onlyPlatforms.includes(platform)) {
+                continue;
+            }
+
             const refresher = setUpUserMap[platform];
 
             if (!handle) {
@@ -51,6 +56,9 @@ export const setupUser = async (user_id: string): Promise<boolean> => {
                 }
             }
         }
+
+        // Freshly imported solved problems may satisfy pending assignments.
+        await syncAssignmentCompletions(user_id);
 
         return allPlatformsSucceeded;
     } catch (error: unknown) {

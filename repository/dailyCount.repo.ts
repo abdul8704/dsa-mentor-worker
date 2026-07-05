@@ -39,6 +39,21 @@ export const upsertDailyCount = async (user_id: string, date: string, solved: nu
 };
 
 /**
+ * Delete all daily_count rows for a user. Used when platform-scoped data is
+ * purged (e.g. after a handle change) and the cross-platform aggregate must be
+ * rebuilt from scratch.
+ */
+export const deleteDailyCountsForUser = async (user_id: string): Promise<void> => {
+    const { error } = await supabase
+        .from("daily_count")
+        .delete()
+        .eq("user_id", user_id);
+
+    if (error)
+        throw new Error(`Error deleting daily counts for ${user_id}: ${error.message}`);
+};
+
+/**
  * Get daily counts for a user in a date range [fromDate, toDate] inclusive.
  * Returns an array of { date, solved } sorted by date ascending.
  * Missing dates are NOT included — caller should treat missing dates as 0.
