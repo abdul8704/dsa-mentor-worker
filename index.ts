@@ -5,6 +5,7 @@ import { userHeatmapRouter } from "./routes/userHeatmap.ts";
 import { refreshRouter } from "./routes/refresh.ts";
 import { problemMetaRouter } from "./routes/problemMeta.ts";
 import { adminRouter } from "./routes/admin.ts";
+import { startRefreshCron } from "./jobs/refreshCron.ts";
 
 const app = express();
 
@@ -29,3 +30,5 @@ app.use("/admin", adminRouter);
 app.listen(5000, () => {
   console.log("Server is running on port 5000");
 });
+
+startRefreshCron();

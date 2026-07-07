@@ -1,92 +1,16 @@
 import { Router } from "express";
-import { refreshUser, setupUser } from "../jobs/problemSolved.ts";
+import { setupUser } from "../jobs/problemSolved.ts";
 import { resyncAfterHandleChange } from "../jobs/handleChange.ts";
 import { refreshUserContests } from "../jobs/contestRefresh.ts";
-import { updateDailyCountForUser } from "../jobs/dailyCount.ts";
-import { updateStreakForUser } from "../jobs/streak.ts";
-import { syncAssignmentCompletions } from "../jobs/assignmentSync.ts";
-import { getStaleUsers, updateLastRefreshed } from "../repository/profile.repo.ts";
+import { runFullRefreshForUser } from "../jobs/refreshPipeline.ts";
+import { getStaleUsers } from "../repository/profile.repo.ts";
+import { getUserPlatforms } from "../repository/userPlatform.repo.ts";
 import { platformMain } from "../scripts/refreshPlatformData.ts";
 import { heatMapMain } from "../scripts/refreshHeatmap.ts";
 import { backfillMain } from "../scripts/backfillDailyCount.ts";
+import { verifyHandles } from "../services/handleVerification.ts";
 
 export const refreshRouter = Router();
-
-/**
- * Helper: sleep for `ms` milliseconds.
- */
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
-
-/**
- * Checks if an error is a rate-limiting error (HTTP 429 or 503).
- */
-const isRateLimitError = (error: unknown): boolean => {
-    if (error instanceof Error) {
-        const msg = error.message.toLowerCase();
-        return msg.includes("429") || msg.includes("rate limit") || msg.includes("too many requests") || msg.includes("503");
-    }
-    return false;
-};
-
-/**
- * Run the full refresh pipeline for a single user:
- *   1. Platform data sync (solved problems)
- *   2. Contest data sync
- *   3. Daily count computation
- *   4. Streak computation
- *   5. Update last_refreshed timestamp
- *
- * If a rate-limiting error is encountered, waits 15 seconds and retries once.
- */
-const runFullRefreshForUser = async (user_id: string): Promise<{ success: boolean; message: string }> => {
-    const steps = [
-        { name: "PlatformSync", fn: () => refreshUser(user_id) },
-        { name: "ContestSync", fn: () => refreshUserContests(user_id) },
-        { name: "DailyCount", fn: () => updateDailyCountForUser(user_id) },
-        { name: "Streak", fn: () => updateStreakForUser(user_id) },
-        // Auto-complete assignments once the freshest solved data is in.
-        { name: "AssignmentSync", fn: () => syncAssignmentCompletions(user_id) },
-    ];
-
-    const errors: string[] = [];
-
-    for (const step of steps) {
-        try {
-            await step.fn();
-        } catch (error: unknown) {
-            if (isRateLimitError(error)) {
-                console.log(`[Refresh] ${user_id}: Rate limited during ${step.name}, retrying in 15s...`);
-                await sleep(15_000);
-
-                try {
-                    await step.fn();
-                } catch (retryError: unknown) {
-                    const msg = retryError instanceof Error ? retryError.message : "Unknown error";
-                    errors.push(`${step.name} (retry): ${msg}`);
-                    console.error(`[Refresh] ${user_id}: ${step.name} retry failed: ${msg}`);
-                }
-            } else {
-                const msg = error instanceof Error ? error.message : "Unknown error";
-                errors.push(`${step.name}: ${msg}`);
-                console.error(`[Refresh] ${user_id}: ${step.name} failed: ${msg}`);
-            }
-        }
-    }
-
-    // Update last_refreshed even on partial success
-    try {
-        await updateLastRefreshed(user_id);
-    } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : "Unknown error";
-        errors.push(`UpdateLastRefreshed: ${msg}`);
-    }
-
-    if (errors.length > 0) {
-        return { success: false, message: `Partial failure: ${errors.join("; ")}` };
-    }
-
-    return { success: true, message: "All steps completed successfully" };
-};
 
 // ──────────────────────────────────────────────────────
 // POST /refresh/user — Refresh a single user by user_id
@@ -206,26 +130,83 @@ refreshRouter.post("/handle-change", async (req, res) => {
     res.json({ success: true, message: "Handle-change resync started", platforms: cleanedPlatforms });
 });
 
+// ──────────────────────────────────────────────────────
+// POST /refresh/fresh-init — Verify the user's platform handles
+// (fast, single request per platform) and respond immediately.
+// The slow full-history import + aggregate rebuild for the handles
+// that verified successfully runs afterwards in the background, so
+// the client never has to wait through it (it can easily take well
+// over the client's HTTP timeout for accounts with a long history).
+// Body: { "user_id": "..." }
+// ──────────────────────────────────────────────────────
 refreshRouter.post("/fresh-init", async (req, res) => {
     const user_id = req.body?.user_id;
-    try{
-        console.log(`[Setup] POST /refresh/fresh-init — user_id=${user_id}`);
-        await setupUser(user_id);
 
-        Promise.all([
-            platformMain(user_id),
-            heatMapMain(user_id),
-            backfillMain(user_id),
-            refreshUserContests(user_id),
-        ]).then(() => {
-            console.log("[Setup] Fresh init completed for all scripts.");
-        }).catch((error) => {
-            console.error(`[Setup] Fresh init encountered an error: ${error instanceof Error ? error.message : error}`);
+    if (typeof user_id !== "string" || !user_id.trim()) {
+        res.status(400).json({ error: "user_id is required in the request body" });
+        return;
+    }
+
+    const cleanedUserId = user_id.trim();
+
+    try {
+        console.log(`[Setup] POST /refresh/fresh-init — user_id=${cleanedUserId}`);
+
+        const userPlatforms = await getUserPlatforms(cleanedUserId);
+
+        if (Object.keys(userPlatforms).length === 0) {
+            res.json({ success: true, message: "No platform handles to verify.", verified: [], invalid: [] });
+            return;
+        }
+
+        const verifications = await verifyHandles(userPlatforms);
+        const verifiedPlatforms = verifications.filter((v) => v.valid).map((v) => v.platform);
+        const invalidHandles = verifications
+            .filter((v) => !v.valid)
+            .map(({ platform, handle, error }) => ({ platform, handle, error }));
+
+        if (verifiedPlatforms.length === 0) {
+            console.log(`[Setup] fresh-init: no handles verified for ${cleanedUserId}`);
+            res.status(422).json({
+                success: false,
+                message: "None of the provided handles could be verified.",
+                verified: [],
+                invalid: invalidHandles,
+            });
+            return;
+        }
+
+        // Respond right away — verification is the only thing the client
+        // waits on. Import + aggregation continue after the response is sent.
+        res.json({
+            success: true,
+            message: "Handles verified. Your data is being imported in the background.",
+            verified: verifiedPlatforms,
+            invalid: invalidHandles,
         });
-        
-        res.json({ success: true, message: "Fresh init completed successfully" });
+
+        setupUser(cleanedUserId, verifiedPlatforms)
+            .then(() =>
+                Promise.all([
+                    platformMain(cleanedUserId),
+                    heatMapMain(cleanedUserId),
+                    backfillMain(cleanedUserId),
+                    refreshUserContests(cleanedUserId),
+                ])
+            )
+            .then(() => {
+                console.log(`[Setup] Fresh init background import complete for ${cleanedUserId}`);
+            })
+            .catch((error) => {
+                console.error(
+                    `[Setup] Fresh init background import failed for ${cleanedUserId}: ${
+                        error instanceof Error ? error.message : error
+                    }`
+                );
+            });
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "Internal server error";
+        console.error(`[Setup] fresh-init failed for ${cleanedUserId}: ${message}`);
         res.status(500).json({ error: message });
     }
-})
+});
