@@ -8,6 +8,9 @@ import { supabase } from "../db/supabase.ts";
  */
 const USER_SCOPED_TABLES: { table: string; columns: string[] }[] = [
     { table: "assignments", columns: ["mentor_id", "mentee_id"] },
+    { table: "mentor_notes", columns: ["mentor_id", "mentee_id"] },
+    { table: "mentee_group_members", columns: ["mentee_id"] },
+    { table: "mentee_groups", columns: ["mentor_id"] },
     { table: "mentorships", columns: ["mentor_id", "mentee_id"] },
     { table: "invites", columns: ["mentor_id", "invitee_user_id"] },
     { table: "daily_count", columns: ["user_id"] },
