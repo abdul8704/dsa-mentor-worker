@@ -107,6 +107,72 @@ export const getProblemDetails = async (titleSlug: string[]) => {
     return detailsMap;
 }
 
+/**
+ * LeetCode's `attendedContestsCount` (on `userContestRanking`) updates the
+ * instant a user submits during a contest, but the matching entry in
+ * `userContestRankingHistory` — which carries the rating/rank we normally
+ * store — can lag behind by up to ~1 day while LeetCode finalizes results.
+ * Right after a contest ends this makes a genuinely-attended contest look
+ * "missed" on our dashboard.
+ *
+ * When the live counter is ahead of the detailed history, this fills the gap
+ * by matching the most recent past contest(s) (from LeetCode's full contest
+ * list) that aren't already accounted for, using a placeholder rating/rank
+ * carried forward from the user's last known contest. The placeholder is
+ * automatically replaced with real numbers once LeetCode publishes them,
+ * since the next sync's upsert matches on the same `contest_id`.
+ */
+const buildPendingContestRows = async (
+    user_id: string,
+    attendedHistory: LeetCodeContestHistory[],
+    gapCount: number
+): Promise<UserContestInsert[]> => {
+    try {
+        const { data } = await axios.post(LEETCODE_API.BASE_URL, LEETCODE_API.endpoints.allContests(), {
+            headers: { "Content-Type": "application/json" },
+        });
+
+        const allContests = data?.data?.allContests as
+            | { title: string; startTime: number }[]
+            | undefined;
+
+        if (!Array.isArray(allContests)) {
+            return [];
+        }
+
+        const nowSeconds = Date.now() / 1000;
+        const threeDaysAgo = nowSeconds - 3 * 24 * 60 * 60;
+        const knownTitles = new Set(attendedHistory.map((entry) => entry.contest.title));
+
+        const candidates = allContests
+            .filter((c) => c.startTime <= nowSeconds && c.startTime >= threeDaysAgo && !knownTitles.has(c.title))
+            .sort((a, b) => b.startTime - a.startTime)
+            .slice(0, gapCount);
+
+        if (candidates.length === 0) {
+            return [];
+        }
+
+        const lastKnown = [...attendedHistory].sort((a, b) => b.contest.startTime - a.contest.startTime)[0];
+        const placeholderRating = lastKnown ? Math.round(lastKnown.rating) : 0;
+        const placeholderRank = lastKnown ? Math.round(lastKnown.ranking) : 0;
+
+        return candidates.map((c) => ({
+            user_id,
+            platform: "leetcode",
+            contest_id: `LC-${slugifyContestTitle(c.title)}`,
+            date: new Date(c.startTime * 1000).toISOString(),
+            rank: placeholderRank,
+            rating: placeholderRating,
+        }));
+    } catch (error) {
+        console.error(
+            `Failed to resolve pending LeetCode contests: ${error instanceof Error ? error.message : error}`
+        );
+        return [];
+    }
+};
+
 export const refreshLeetCodeContests = async (user_id: string, handle: string): Promise<ContestSyncResult> => {
     const { data } = await axios.post(LEETCODE_API.BASE_URL, LEETCODE_API.endpoints.contestHistory(handle), {
         headers: {
@@ -115,6 +181,7 @@ export const refreshLeetCodeContests = async (user_id: string, handle: string): 
     });
 
     const history = data?.data?.userContestRankingHistory as LeetCodeContestHistory[] | undefined;
+    const liveAttendedCount = data?.data?.userContestRanking?.attendedContestsCount as number | undefined;
 
     if (!Array.isArray(history)) {
         throw new Error(`Invalid contest history response for ${handle}`);
@@ -131,10 +198,19 @@ export const refreshLeetCodeContests = async (user_id: string, handle: string): 
         rating: Math.round(entry.rating),
     }));
 
+    let pendingCount = 0;
+    if (typeof liveAttendedCount === "number" && liveAttendedCount > attended.length) {
+        const pendingRows = await buildPendingContestRows(user_id, attended, liveAttendedCount - attended.length);
+        pendingCount = pendingRows.length;
+        rows.push(...pendingRows);
+    }
+
     const newCount = rows.filter((row) => !existing.has(row.contest_id)).length;
     await upsertUserContests(rows);
 
-    console.log(`Synced ${rows.length} LeetCode contests for ${handle} (${newCount} new)`);
+    console.log(
+        `Synced ${rows.length} LeetCode contests for ${handle} (${newCount} new${pendingCount > 0 ? `, ${pendingCount} pending/placeholder` : ""})`
+    );
 
     return { success: true, user_id, platform: "leetcode", contestsSynced: newCount };
 }

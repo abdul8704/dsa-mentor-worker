@@ -74,7 +74,10 @@ export const LEETCODE_API = {
             variables: { titleSlug }
         }),
 
-        // Get user contest ranking history
+        // Get user contest ranking history, plus the live attended-contests
+        // counter (updates immediately on submission; the detailed history
+        // entries below can lag behind it by up to ~1 day for a contest that
+        // just ended — see refreshLeetCodeContests's pending-contest handling).
         contestHistory: (username: string) => ({
             query: `
                 query userContestRankingHistory($username: String!) {
@@ -87,9 +90,27 @@ export const LEETCODE_API = {
                             startTime
                         }
                     }
+                    userContestRanking(username: $username) {
+                        attendedContestsCount
+                    }
                 }
             `,
             variables: { username }
+        }),
+
+        // All LeetCode contests (past + upcoming), used to identify recent
+        // contests missing from userContestRankingHistory (see above).
+        allContests: () => ({
+            query: `
+                query allContests {
+                    allContests {
+                        title
+                        titleSlug
+                        startTime
+                        duration
+                    }
+                }
+            `,
         }),
 
         // Get user submission calendar (heatmap data) + streak
