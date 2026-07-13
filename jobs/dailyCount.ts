@@ -8,13 +8,42 @@ import type { DailyCountUserResult, DailyCountAllResult } from "../types/respons
 const getTodayUTC = (): string => new Date().toISOString().split("T")[0]!;
 
 /**
- * Compute and upsert the daily new-problem count for a single user for today.
+ * Add N days to a YYYY-MM-DD date string and return as YYYY-MM-DD.
+ */
+const addDays = (dateStr: string, days: number): string => {
+    const date = new Date(dateStr + "T00:00:00Z");
+    date.setUTCDate(date.getUTCDate() + days);
+    return date.toISOString().split("T")[0]!;
+};
+
+/**
+ * Compute and upsert the daily new-problem count for a single user, for both
+ * today and yesterday.
+ *
+ * Yesterday is re-checked on every run (not just today) because this job only
+ * ever writes to the date that was "today" at the time it ran. If a user
+ * solves something after the last run of a given day, that day's row would
+ * otherwise be permanently stuck at a stale (too-low) count — which in turn
+ * breaks the streak walk in `streak.ts` even though the user was actually
+ * active that day. Re-checking yesterday on the next run gives every day one
+ * more chance to be corrected to its final value before the streak logic
+ * treats it as settled.
  */
 export const updateDailyCountForUser = async (user_id: string): Promise<DailyCountUserResult> => {
     const today = getTodayUTC();
-    const count = await getNewSolvedCountForDate(user_id, today);
-    await upsertDailyCount(user_id, today, count);
-    console.log(`[DailyCount] ${user_id}: ${count} new problems on ${today}`);
+    const yesterday = addDays(today, -1);
+
+    const [count, yesterdayCount] = await Promise.all([
+        getNewSolvedCountForDate(user_id, today),
+        getNewSolvedCountForDate(user_id, yesterday),
+    ]);
+
+    await Promise.all([
+        upsertDailyCount(user_id, today, count),
+        upsertDailyCount(user_id, yesterday, yesterdayCount),
+    ]);
+
+    console.log(`[DailyCount] ${user_id}: ${count} new problems on ${today} (yesterday ${yesterday}: ${yesterdayCount})`);
     return { success: true, user_id, date: today, solved: count };
 };
 

@@ -46,6 +46,13 @@ const refreshHeatmapForUser = async (user_id: string): Promise<number> => {
     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
     const fromDate = oneYearAgo.toISOString().split("T")[0]!;
     const toDate = now.toISOString().split("T")[0]!;
+    // `user-streak.updated_on` means "confirmed through this date" (see
+    // jobs/streak.ts) and never includes today — mirror that here so a
+    // brand-new streak row created by this script doesn't get skipped by a
+    // later streak.ts run that thinks today is already confirmed.
+    const yesterdayDate = new Date(now);
+    yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
+    const yesterday = yesterdayDate.toISOString().split("T")[0]!;
 
     // LeetCode: fetch from API
     if (platforms["leetcode"]) {
@@ -107,7 +114,7 @@ const refreshHeatmapForUser = async (user_id: string): Promise<number> => {
                 user_id,
                 dbCurrent,
                 newLongest,
-                existingStreak?.updated_on ?? toDate
+                existingStreak?.updated_on ?? yesterday
             );
             console.log(`  [streak] longest_streak updated: ${dbLongest} → ${newLongest} (LC API streak=${lcStreak})`);
         }

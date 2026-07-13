@@ -20,16 +20,28 @@ const addDays = (dateStr: string, days: number): string => {
 /**
  * Compute and update the streak for a single user.
  *
+ * `curr_streak`/`updated_on` always represent the streak **confirmed through
+ * yesterday** — never including today. Today's day isn't over yet, so its
+ * daily_count entry can still change (the user might solve more later), and
+ * baking a "today" bonus into the persisted value made the result depend on
+ * *when* during the day this job happened to run — e.g. if it ran once early
+ * (before the user solved anything) it would lock in `updated_on = today`
+ * and every later run that same day would skip re-checking today entirely,
+ * even after daily_count[today] became non-zero. By only ever confirming
+ * through yesterday, this job is idempotent no matter how many times it runs
+ * per day, and callers that want to show "today included" combine this with
+ * a live solved-today check (see `getStreakData` on the frontend).
+ *
  * Algorithm:
  * 1. Fetch existing streak row (or treat as fresh if none).
  * 2. Determine the scan window: from (updated_on + 1) to yesterday.
  *    - If no updated_on (first time), scan all daily_count history.
+ *    - If already confirmed through yesterday (or later), nothing to do.
  * 3. Walk day-by-day through the window:
  *    - solved > 0 → extend streak
  *    - solved = 0 → update longest_streak = max(longest, curr), then reset curr to 0
- * 4. Handle today: if today's count > 0, extend streak (but 0 doesn't break it).
- * 5. Final longest_streak = max(longest, curr).
- * 6. Upsert to user-streak with updated_on = today.
+ * 4. Final longest_streak = max(longest, curr).
+ * 5. Upsert to user-streak with updated_on = yesterday.
  */
 export const updateStreakForUser = async (user_id: string): Promise<StreakUserResult> => {
     const today = getTodayUTC();
@@ -51,17 +63,18 @@ export const updateStreakForUser = async (user_id: string): Promise<StreakUserRe
         // Use a far-back date to get full history.
         scanStart = "2000-01-01";
         currStreak = 0; // Recompute from scratch
-    } else if (updatedOn >= today) {
-        // Already updated today, nothing to do
-        console.log(`[Streak] ${user_id}: already updated today (${today})`);
+    } else if (updatedOn >= yesterday) {
+        // Already confirmed through yesterday (or later), nothing new to walk.
+        console.log(`[Streak] ${user_id}: already confirmed through ${updatedOn}`);
         return { success: true, user_id, curr_streak: currStreak, longest_streak: longestStreak };
     } else {
         // Start from the day after last update
         scanStart = addDays(updatedOn, 1);
     }
 
-    // Fetch daily counts from scanStart to today (inclusive, to include today's count)
-    const dailyCounts = await getDailyCounts(user_id, scanStart, today);
+    // Fetch daily counts from scanStart through yesterday — today is
+    // intentionally excluded, see rationale above.
+    const dailyCounts = await getDailyCounts(user_id, scanStart, yesterday);
 
     // Build a map for quick lookup: date -> solved count
     const countMap = new Map<string, number>();
@@ -70,39 +83,30 @@ export const updateStreakForUser = async (user_id: string): Promise<StreakUserRe
     }
 
     // Walk day-by-day from scanStart to yesterday
-    // Only dates up to yesterday can break the streak
-    if (scanStart <= yesterday) {
-        let currentDate = scanStart;
+    let currentDate = scanStart;
 
-        while (currentDate <= yesterday) {
-            const solved = countMap.get(currentDate) ?? 0;
+    while (currentDate <= yesterday) {
+        const solved = countMap.get(currentDate) ?? 0;
 
-            if (solved > 0) {
-                currStreak++;
-            } else {
-                // Update longest before resetting
-                longestStreak = Math.max(longestStreak, currStreak);
-                currStreak = 0;
-            }
-
-            currentDate = addDays(currentDate, 1);
+        if (solved > 0) {
+            currStreak++;
+        } else {
+            // Update longest before resetting
+            longestStreak = Math.max(longestStreak, currStreak);
+            currStreak = 0;
         }
-    }
 
-    // Handle today: can only extend, never break
-    const todaySolved = countMap.get(today) ?? 0;
-    if (todaySolved > 0) {
-        currStreak++;
+        currentDate = addDays(currentDate, 1);
     }
 
     // Final longest check
     longestStreak = Math.max(longestStreak, currStreak);
 
-    // Upsert
-    await upsertUserStreak(user_id, currStreak, longestStreak, today);
+    // Upsert — confirmed through yesterday
+    await upsertUserStreak(user_id, currStreak, longestStreak, yesterday);
 
     console.log(
-        `[Streak] ${user_id}: curr=${currStreak}, longest=${longestStreak}, updated=${today}`
+        `[Streak] ${user_id}: curr=${currStreak}, longest=${longestStreak}, confirmed through=${yesterday}`
     );
 
     return { success: true, user_id, curr_streak: currStreak, longest_streak: longestStreak };
