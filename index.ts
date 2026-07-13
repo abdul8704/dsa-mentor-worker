@@ -19,7 +19,7 @@ app.use(
 app.use(express.json());
 
 app.get("/", (_req, res) => {
-  res.send("Hello, World!");
+  res.send("Hello, Worldddddddddddd!");
 });
 
 app.use("/user-heatmap", userHeatmapRouter);
