@@ -1,5 +1,7 @@
 import { getUserSolvedProblems, getUserSolvedProblemsByDate } from "../repository/solvedProblems.repo.ts"
 import type { AtcoderSubmissionResponse, CodeforcesResponse, GetProblemsResult, LeetCodeRecentSubmissionResponse } from "../types/platformResponse.ts"
+import type { CSESSubmission } from "../types/platformResponse.ts"
+import { difficultyMap as csesDifficultyMap } from "./difficulty.ts"
 import type { Database } from "../types/db.ts"
 import { getAllProbs, addProbs, getLeetCodeProbsBySlug } from "../repository/problems.repo.ts"
 import { difficultyMap } from "../utils/difficulty.ts"
@@ -12,7 +14,8 @@ type ProblemEntry = Database["public"]["Tables"]["problems"]["Insert"]
 const platformMap: Record<string, string> = {
     "codeforces": "CF",
     "atcoder": "ATC",
-    "leetcode": "LC"
+    "leetcode": "LC",
+    "cses": "CSES"
 }
 
 export const filterNewSolvedCodeforces = async (user_id: string, platform: string, payload: CodeforcesResponse[]): Promise<solved_problems_insert[]> => {
@@ -207,3 +210,63 @@ export const filterNewSolvedLeetcode = async (user_id: string, platform: string,
     return resultSet;
 }
 
+
+export const filterNewSolvedCSES = async (user_id: string, platform: string, payload: CSESSubmission[]): Promise<solved_problems_insert[]> => {
+    const solved: Set<string> = await getUserSolvedProblems(user_id);
+    const solvedByDate: Set<string> = await getUserSolvedProblemsByDate(user_id);
+    const problemSet: Set<string> = await getAllProbs();
+
+    let resultSet: solved_problems_insert[] = [];
+    let newProblems: ProblemEntry[] = [];
+    const queuedProblemIds = new Set<string>();
+    const platformPrefix = platformMap[platform];
+
+    if (!platformPrefix) {
+        return resultSet;
+    }
+
+    payload.sort((a, b) => new Date(a.submittedAt).getTime() - new Date(b.submittedAt).getTime());
+
+    payload.forEach((entry) => {
+        const problem_id: string = platformPrefix + entry.taskId;
+        const solvedDate: string = problem_id + "-" + entry.submittedAt.split("T")[0];
+
+        if (solvedByDate.has(solvedDate)) {
+            return;
+        }
+        solvedByDate.add(solvedDate);
+
+        resultSet.push({
+            user_id,
+            platform,
+            problem_id,
+            solved_at: entry.submittedAt,
+            already_solved: solved.has(problem_id) ? true : false
+        });
+
+        solved.add(problem_id); // Add to solved set to prevent duplicates in the same batch
+
+        if (!problemSet.has(problem_id) && !queuedProblemIds.has(problem_id)) {
+            queuedProblemIds.add(problem_id);
+
+            // No numeric rating on CSES — pass the global solve rate instead
+            // (see utils/difficulty.ts's cses branch for what this means).
+            const solveRatePercent = entry.attemptedBy > 0
+                ? Math.round((entry.solvedBy / entry.attemptedBy) * 100)
+                : 100;
+
+            newProblems.push({
+                problem_id,
+                platform,
+                rating: null,
+                tags: [entry.category.toLowerCase()],
+                title: entry.taskName,
+                difficulty: csesDifficultyMap(platform, solveRatePercent)
+            })
+        }
+    });
+
+    await addProbs(newProblems);
+
+    return resultSet;
+}

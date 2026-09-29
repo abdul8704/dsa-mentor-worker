@@ -5,6 +5,7 @@ import { fetchJson, fetchText, cached } from "../utils/httpClient.ts";
 import { difficultyMap } from "../utils/difficulty.ts";
 import { getProblemDetails } from "./leetcode/client.ts";
 import { CODEFORCES_API } from "./config.ts";
+import { parseTaskList } from "./cses/client.ts";
 
 type ProblemEntry = Database["public"]["Tables"]["problems"]["Insert"];
 
@@ -21,7 +22,7 @@ const CATALOG_TTL_MS = 6 * 60 * 60 * 1000;
 export const fetchProblemMeta = async (rawUrl: string): Promise<ProblemEntry> => {
     const parsed = parseProblemUrl(rawUrl);
     if (!parsed) {
-        throw new Error("Unsupported or malformed problem URL. Use a LeetCode, Codeforces, or AtCoder problem link.");
+        throw new Error("Unsupported or malformed problem URL. Use a LeetCode, Codeforces, AtCoder, or CSES problem link.");
     }
 
     console.log(`[problemMeta] Resolving ${parsed.platform} problem ${parsed.problem_id}`);
@@ -33,6 +34,8 @@ export const fetchProblemMeta = async (rawUrl: string): Promise<ProblemEntry> =>
             return fetchCodeforcesMeta(parsed);
         case "atcoder":
             return fetchAtcoderMeta(parsed);
+        case "cses":
+            return fetchCsesMeta(parsed);
     }
 };
 
@@ -232,5 +235,49 @@ async function fetchAtcoderMeta(
         rating,
         // AtCoder exposes no topic tags.
         tags: [],
+    };
+}
+
+
+// -- CSES: public problemset list (name, category, global solve stats) ----
+// Reuses parseTaskList from services/cses/client.ts rather than re-scraping
+// -- the list page's structure (categories, task-score spans) is identical
+// whether or not the request is logged in; only the per-mentee "solved"
+// status icon differs, which this resolver doesn't need.
+async function getCsesCatalog(): Promise<
+    Map<number, { name: string; category: string; solvedBy: number; attemptedBy: number }>
+> {
+    return cached("cses-tasklist", CATALOG_TTL_MS, async () => {
+        console.log("[problemMeta] Loading CSES problem list catalog...");
+        const html = await fetchText("https://cses.fi/problemset/list/", { label: "CSES problemset list" });
+        const tasks = parseTaskList(html);
+
+        const map = new Map<number, { name: string; category: string; solvedBy: number; attemptedBy: number }>();
+        for (const t of tasks) {
+            map.set(t.taskId, { name: t.name, category: t.category, solvedBy: t.solvedBy, attemptedBy: t.attemptedBy });
+        }
+        console.log(`[problemMeta] Cached ${map.size} CSES problems`);
+        return map;
+    });
+}
+
+async function fetchCsesMeta(parsed: Extract<ParsedProblem, { platform: "cses" }>): Promise<ProblemEntry> {
+    const catalog = await getCsesCatalog();
+    const info = catalog.get(Number(parsed.taskId));
+    if (!info) {
+        throw new Error(`CSES problem "${parsed.taskId}" not found.`);
+    }
+
+    // Same solve-rate-as-difficulty heuristic as utils/dbHelper.ts's
+    // filterNewSolvedCSES uses when ingesting a mentee's own solves.
+    const solveRatePercent = info.attemptedBy > 0 ? Math.round((info.solvedBy / info.attemptedBy) * 100) : 100;
+
+    return {
+        problem_id: parsed.problem_id,
+        platform: "cses",
+        title: info.name,
+        difficulty: difficultyMap("cses", solveRatePercent),
+        rating: 0,
+        tags: [info.category.toLowerCase()],
     };
 }

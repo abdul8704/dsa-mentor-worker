@@ -155,3 +155,42 @@ export type LeetCodeContestHistory = {
     startTime: number;
   };
 };
+// ─── CSES ────────────────────────────────────────────────────────────────
+// CSES has no public API: every type below is scraped from logged-in HTML
+// (services/cses/client.ts). See CSES_INTEGRATION_PLAN.md for the pages.
+
+export type CSESAccount = {
+  userId: number;
+  username: string;
+};
+
+export type CSESTaskStatus = "solved" | "attempted" | "untouched";
+
+/** One row of /problemset/list/ — a task's category, global stats, and the viewer's own status. */
+export type CSESTask = {
+  taskId: number;
+  name: string;
+  category: string;
+  solvedBy: number;
+  attemptedBy: number;
+  status: CSESTaskStatus;
+};
+
+/**
+ * One accepted submission from /problemset/view/{task}/. Carries the parent
+ * task's metadata denormalized onto it (CSES has no per-submission problem
+ * payload the way Codeforces/AtCoder do), so filterNewSolvedCSES can build a
+ * `problems` catalog row without a second fetch.
+ */
+export type CSESSubmission = {
+  submissionId: number;
+  taskId: number;
+  taskName: string;
+  category: string;
+  solvedBy: number;
+  attemptedBy: number;
+  /** UTC ISO instant — converted from CSES's Finnish-local display time. */
+  submittedAt: string;
+  language: string;
+  accepted: boolean;
+};

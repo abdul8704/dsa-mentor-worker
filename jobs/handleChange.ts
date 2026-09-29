@@ -4,6 +4,7 @@ import { deleteUserPlatformData } from "../repository/userPlatformData.repo.ts";
 import { deleteDailyCountsForUser } from "../repository/dailyCount.repo.ts";
 import { deleteUserStreak } from "../repository/streak.repo.ts";
 import { updateLastRefreshed } from "../repository/profile.repo.ts";
+import { deletePlatformSecret } from "../repository/userPlatformSecrets.repo.ts";
 import { setupUser } from "./problemSolved.ts";
 import { refreshUserContests } from "./contestRefresh.ts";
 import { updateStreakForUser } from "./streak.ts";
@@ -23,6 +24,15 @@ export const purgePlatformData = async (user_id: string, platform: string): Prom
     await deleteSolvedProblemsForPlatform(user_id, platform);
     await deleteUserContestsForPlatform(user_id, platform);
     await deleteUserPlatformData(user_id, platform);
+
+    // CSES has no separate "handle" to re-key on — a purge here means the
+    // mentee is relinking a different CSES account entirely, so the old
+    // session credential is no longer valid for the new handle and must go
+    // too (routes/cses.ts stores the new one afterwards).
+    if (platform === "cses") {
+        await deletePlatformSecret(user_id, "cses");
+    }
+
     console.log(`[HandleChange] Purged data for user=${user_id} platform=${platform}`);
 };
 

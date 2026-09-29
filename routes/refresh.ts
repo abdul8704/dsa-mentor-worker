@@ -152,7 +152,14 @@ refreshRouter.post("/fresh-init", async (req, res) => {
     try {
         console.log(`[Setup] POST /refresh/fresh-init — user_id=${cleanedUserId}`);
 
-        const userPlatforms = await getUserPlatforms(cleanedUserId);
+        const allPlatforms = await getUserPlatforms(cleanedUserId);
+
+        // CSES is verified+imported through its own dedicated flow
+        // (POST /cses/connect, since verification needs the mentee's
+        // session cookie, not just a handle string) — exclude it here so it
+        // never shows up as a false "Unsupported platform" invalid-handle
+        // entry in this endpoint's response.
+        const { cses: _csesHandle, ...userPlatforms } = allPlatforms;
 
         if (Object.keys(userPlatforms).length === 0) {
             res.json({ success: true, message: "No platform handles to verify.", verified: [], invalid: [] });

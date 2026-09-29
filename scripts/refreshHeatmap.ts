@@ -94,6 +94,21 @@ const refreshHeatmapForUser = async (user_id: string): Promise<number> => {
         }
     }
 
+    // CSES: aggregate from local DB, same as Codeforces/AtCoder above — it
+    // shares the exact same solved_problems/platform shape, so no dedicated
+    // CSES branch is needed here beyond calling the same helper.
+    if (platforms["cses"]) {
+        try {
+            const csesMap = await getPlatformSolvedCountsByDate(user_id, "cses", fromDate, toDate);
+            maps.push(csesMap);
+            console.log(`  [cses] ${platforms["cses"]}: ${csesMap.size} days with activity`);
+        } catch (error) {
+            if (error instanceof Error) {
+                console.error(`  [cses] Failed to fetch heatmap: ${error.message}`);
+            }
+        }
+    }
+
     // Merge all platform maps
     const merged = mergeMaps(...maps);
 

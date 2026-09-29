@@ -3,6 +3,7 @@ import { getUserPlatforms } from "../repository/userPlatform.repo.ts";
 import { getAllUsers } from "../repository/profile.repo.ts";
 import { getAllSubmissionsAtcoder, refreshAtcoder } from "../services/atcoder/client.ts";
 import { syncLeetCodePlatformData } from "../services/leetcode/client.ts";
+import { getAllSubmissionsCSES, refreshCSES } from "../services/cses/client.ts";
 import { updateDailyCountForAllUsers } from "./dailyCount.ts";
 import { updateStreakForAllUsers } from "./streak.ts";
 import { syncAssignmentCompletions } from "./assignmentSync.ts";
@@ -11,13 +12,15 @@ import type { PlatformSyncResult } from "../types/response.ts";
 const refreshMap: Record<string, (user_id: string, handle: string) => Promise<PlatformSyncResult>> = {
     codeforces: refreshCodeforces,
     atcoder: refreshAtcoder,
-    leetcode: syncLeetCodePlatformData
+    leetcode: syncLeetCodePlatformData,
+    cses: refreshCSES
 };
 
 const setUpUserMap: Record<string, (user_id: string, handle: string) => Promise<PlatformSyncResult>> = {
     codeforces: getAllSubmissions,
     atcoder: getAllSubmissionsAtcoder,
-    leetcode: syncLeetCodePlatformData
+    leetcode: syncLeetCodePlatformData,
+    cses: getAllSubmissionsCSES
 }
 
 export const setupUser = async (user_id: string, onlyPlatforms?: string[]): Promise<boolean> => {
