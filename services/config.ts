@@ -126,6 +126,71 @@ export const LEETCODE_API = {
                 }
             `,
             variables: { username }
+        }),
+
+        // ── Authenticated (need the user's LEETCODE_SESSION + csrftoken) ──
+        // Used by services/leetcode/history.ts for the full-history import.
+        // See LEETCODE_FULL_HISTORY_PLAN.md — shapes are from LeetCode's own
+        // web client and are not a documented/stable API.
+
+        // Who the pasted session belongs to.
+        userStatus: () => ({
+            query: `
+                query globalData {
+                    userStatus {
+                        isSignedIn
+                        username
+                    }
+                }
+            `,
+        }),
+
+        // The signed-in user's submissions, newest first, 20 per page.
+        // Pass back `lastKey` from the previous page — offset alone stops
+        // working past a certain depth. Optional questionSlug narrows it to
+        // one problem (used to find a single problem's first AC).
+        submissionList: (offset: number, limit: number, lastKey: string | null, questionSlug: string | null = null) => ({
+            query: `
+                query submissionList($offset: Int!, $limit: Int!, $lastKey: String, $questionSlug: String) {
+                    submissionList(offset: $offset, limit: $limit, lastKey: $lastKey, questionSlug: $questionSlug) {
+                        lastKey
+                        hasNext
+                        submissions {
+                            id
+                            title
+                            titleSlug
+                            timestamp
+                            statusDisplay
+                            lang
+                        }
+                    }
+                }
+            `,
+            variables: { offset, limit, lastKey, questionSlug }
+        }),
+
+        // Problem catalog page. With a session and filters { status: "AC" }
+        // it lists only problems the user has solved; without, it's the
+        // public catalog (used to fill the problems table in bulk).
+        problemsetQuestionList: (skip: number, limit: number, filters: Record<string, string> = {}) => ({
+            query: `
+                query problemsetQuestionList($categorySlug: String, $limit: Int, $skip: Int, $filters: QuestionListFilterInput) {
+                    problemsetQuestionList: questionList(categorySlug: $categorySlug, limit: $limit, skip: $skip, filters: $filters) {
+                        total: totalNum
+                        questions: data {
+                            questionId: questionFrontendId
+                            title
+                            titleSlug
+                            difficulty
+                            status
+                            topicTags {
+                                slug
+                            }
+                        }
+                    }
+                }
+            `,
+            variables: { categorySlug: "", skip, limit, filters }
         })
     }
 };

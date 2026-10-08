@@ -10,7 +10,7 @@ import { refreshUserContests } from "./contestRefresh.ts";
 import { updateStreakForUser } from "./streak.ts";
 import { platformMain } from "../scripts/refreshPlatformData.ts";
 import { heatMapMain } from "../scripts/refreshHeatmap.ts";
-import { backfillMain } from "../scripts/backfillDailyCount.ts";
+import { syncAssignmentCompletions } from "./assignmentSync.ts";
 
 /**
  * Remove every piece of platform-scoped data for a user on a single platform.
@@ -25,13 +25,12 @@ export const purgePlatformData = async (user_id: string, platform: string): Prom
     await deleteUserContestsForPlatform(user_id, platform);
     await deleteUserPlatformData(user_id, platform);
 
-    // CSES has no separate "handle" to re-key on — a purge here means the
-    // mentee is relinking a different CSES account entirely, so the old
-    // session credential is no longer valid for the new handle and must go
-    // too (routes/cses.ts stores the new one afterwards).
-    if (platform === "cses") {
-        await deletePlatformSecret(user_id, "cses");
-    }
+    // A stored session credential (CSES cookie/password, LeetCode session
+    // keys) belongs to the *old* account — after a purge it no longer matches
+    // the handle, so it goes too. The connect routes (routes/cses.ts,
+    // routes/leetcode.ts) store the new one afterwards. No-op for platforms
+    // with no stored secret.
+    await deletePlatformSecret(user_id, platform);
 
     console.log(`[HandleChange] Purged data for user=${user_id} platform=${platform}`);
 };
@@ -74,19 +73,39 @@ export const resyncAfterHandleChange = async (
     // 3. Re-import full history for the affected platforms only.
     await setupUser(user_id, platforms);
 
-    // 4. Rebuild derived aggregates from the refreshed solved_problems.
+    // 4-5. Rebuild every derived aggregate from the refreshed solved_problems.
+    await rebuildDerivedDataForUser(user_id);
+
+    console.log(`[HandleChange] Resync complete for user=${user_id}`);
+};
+
+/**
+ * Rebuilds every table derived from solved_problems for one user, from
+ * scratch: difficulty totals (user_platform_data), daily_count (heatmap +
+ * 7/30-day counts), contests, streak, assignment auto-completion and
+ * last_refreshed. Safe to run repeatedly.
+ *
+ * Shared by the handle-change resync above and the LeetCode history import
+ * (routes/leetcode.ts), which needs the same "refresh everything" pass after
+ * inserting years of backfilled solves.
+ */
+export const rebuildDerivedDataForUser = async (user_id: string): Promise<void> => {
+    // daily_count is dropped first so backfillMain rebuilds the full range
+    // (it only fills forward from the latest existing row otherwise).
+    await deleteDailyCountsForUser(user_id);
+
     await platformMain(user_id);
-    await backfillMain(user_id);
+    // Rebuilds daily_count (heatmap) across all platforms from first activity
+    // to today — see jobs/dailyCount.ts → rebuildDailyCounts.
     await heatMapMain(user_id);
     await refreshUserContests(user_id);
 
-    // 5. Recompute the streak from scratch. Deleting after heatMapMain ensures
-    //    the row heatMapMain may have written (with updated_on = today) can't
-    //    make updateStreakForUser think it already ran today.
+    // Recompute the streak from scratch. Deleting after heatMapMain ensures
+    // the row heatMapMain may have written (with updated_on = today) can't
+    // make updateStreakForUser think it already ran today.
     await deleteUserStreak(user_id);
     await updateStreakForUser(user_id);
 
+    await syncAssignmentCompletions(user_id);
     await updateLastRefreshed(user_id);
-
-    console.log(`[HandleChange] Resync complete for user=${user_id}`);
 };

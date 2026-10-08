@@ -3,12 +3,8 @@ import { supabase } from "../db/supabase.ts";
 import { verifyCsesSession, loginWithPassword, CSESAuthError } from "../services/cses/client.ts";
 import { getPlatformSecret, upsertPlatformSecret } from "../repository/userPlatformSecrets.repo.ts";
 import { getUserPlatforms } from "../repository/userPlatform.repo.ts";
-import { purgePlatformData } from "../jobs/handleChange.ts";
+import { purgePlatformData, rebuildDerivedDataForUser } from "../jobs/handleChange.ts";
 import { setupUser } from "../jobs/problemSolved.ts";
-import { updateLastRefreshed } from "../repository/profile.repo.ts";
-import { platformMain } from "../scripts/refreshPlatformData.ts";
-import { heatMapMain } from "../scripts/refreshHeatmap.ts";
-import { backfillMain } from "../scripts/backfillDailyCount.ts";
 
 export const csesRouter = Router();
 
@@ -132,9 +128,10 @@ csesRouter.post("/connect", async (req, res) => {
 
         // Mirrors /refresh/fresh-init's background chain for the other
         // platforms, minus contest refresh (CSES has no contests/rating).
+        // Then rebuild every derived table (heatmap/daily_count, difficulty,
+        // streak, ...) the same way the LeetCode import does.
         setupUser(cleanedUserId, ["cses"])
-            .then(() => Promise.all([platformMain(cleanedUserId), heatMapMain(cleanedUserId), backfillMain(cleanedUserId)]))
-            .then(() => updateLastRefreshed(cleanedUserId))
+            .then(() => rebuildDerivedDataForUser(cleanedUserId))
             .then(() => console.log(`[CSES] Background import complete for ${cleanedUserId}`))
             .catch((error: unknown) => {
                 console.error(

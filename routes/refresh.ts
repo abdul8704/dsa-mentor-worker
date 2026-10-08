@@ -1,13 +1,9 @@
 import { Router } from "express";
 import { setupUser } from "../jobs/problemSolved.ts";
-import { resyncAfterHandleChange } from "../jobs/handleChange.ts";
-import { refreshUserContests } from "../jobs/contestRefresh.ts";
+import { resyncAfterHandleChange, rebuildDerivedDataForUser } from "../jobs/handleChange.ts";
 import { runFullRefreshForUser } from "../jobs/refreshPipeline.ts";
 import { getStaleUsers } from "../repository/profile.repo.ts";
 import { getUserPlatforms } from "../repository/userPlatform.repo.ts";
-import { platformMain } from "../scripts/refreshPlatformData.ts";
-import { heatMapMain } from "../scripts/refreshHeatmap.ts";
-import { backfillMain } from "../scripts/backfillDailyCount.ts";
 import { verifyHandles } from "../services/handleVerification.ts";
 
 export const refreshRouter = Router();
@@ -192,15 +188,11 @@ refreshRouter.post("/fresh-init", async (req, res) => {
             invalid: invalidHandles,
         });
 
+        // Rebuild every derived table sequentially. (These used to run in
+        // parallel, with heatMapMain and backfillMain both writing daily_count
+        // under different definitions — whichever finished last won.)
         setupUser(cleanedUserId, verifiedPlatforms)
-            .then(() =>
-                Promise.all([
-                    platformMain(cleanedUserId),
-                    heatMapMain(cleanedUserId),
-                    backfillMain(cleanedUserId),
-                    refreshUserContests(cleanedUserId),
-                ])
-            )
+            .then(() => rebuildDerivedDataForUser(cleanedUserId))
             .then(() => {
                 console.log(`[Setup] Fresh init background import complete for ${cleanedUserId}`);
             })

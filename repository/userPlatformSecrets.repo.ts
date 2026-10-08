@@ -36,6 +36,21 @@ export const getPlatformSecret = async (user_id: string, platform: string): Prom
     };
 };
 
+/** Whether any secret is stored for (user_id, platform) — without decrypting it. */
+export const hasPlatformSecret = async (user_id: string, platform: string): Promise<boolean> => {
+    const { data, error } = await supabase
+        .from("user_platform_secrets")
+        .select("platform")
+        .eq("user_id", user_id)
+        .eq("platform", platform)
+        .maybeSingle();
+
+    if (error) {
+        throw new Error(`Error checking ${platform} secret for ${user_id}: ${error.message}`);
+    }
+    return Boolean(data);
+};
+
 /** Encrypts and stores/replaces the secret for (user_id, platform), marking it freshly verified. */
 export const upsertPlatformSecret = async (
     user_id: string,

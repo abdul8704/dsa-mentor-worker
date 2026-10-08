@@ -28,7 +28,7 @@ type DifficultyCounts = {
  * Only counts problems where already_solved = false to avoid
  * double-counting re-solves on different dates.
  */
-const getDifficultyCountsForUserPlatform = async (
+export const getDifficultyCountsForUserPlatform = async (
     user_id: string,
     platform: string
 ): Promise<DifficultyCounts> => {

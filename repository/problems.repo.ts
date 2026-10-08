@@ -5,17 +5,28 @@ import type { AddProblemsResult } from "../types/response.ts";
 
 type ProblemEntry = Database["public"]["Tables"]["problems"]["Insert"]
 
+// Paged: the problems catalog is shared across all users and platforms and is
+// well past PostgREST's 1000-row default cap, so an unpaged select silently
+// returned only part of it.
 export const getAllProbs = async (): Promise<Set<string>> => {
-    const { data, error } = await supabase
-        .from("problems")
-        .select("problem_id");
+    const PAGE_SIZE = 1000;
+    const problemSet: Set<string> = new Set();
+    let from = 0;
 
-    if (error)
-        throw new Error(`Error while fetching problems ${error.message}`);
+    while (true) {
+        const { data, error } = await supabase
+            .from("problems")
+            .select("problem_id")
+            .order("problem_id", { ascending: true })
+            .range(from, from + PAGE_SIZE - 1);
 
-    let problemSet: Set<string> = new Set();
+        if (error)
+            throw new Error(`Error while fetching problems ${error.message}`);
 
-    data.forEach((problem) => problemSet.add(problem.problem_id));
+        data.forEach((problem) => problemSet.add(problem.problem_id));
+        if (data.length < PAGE_SIZE) break;
+        from += PAGE_SIZE;
+    }
 
     return problemSet;
 }
@@ -45,15 +56,24 @@ export const getLeetCodeProbsBySlug = async (
         return { found: {}, missing: [] };
     }
 
-    const formattedIds = slugs.map(slug => "LC" + slug);
+    const formattedIds = [...new Set(slugs)].map(slug => "LC" + slug);
 
-    const { data, error } = await supabase
-        .from("problems")
-        .select("*")
-        .in("problem_id", formattedIds);
+    // Chunked: a full-history import can ask about thousands of slugs at once,
+    // which would blow past both the URL length limit for .in() and the
+    // 1000-row response cap.
+    const CHUNK_SIZE = 200;
+    const data: Database["public"]["Tables"]["problems"]["Row"][] = [];
 
-    if (error) {
-        throw new Error(`Error while fetching problem details ${error.message}`);
+    for (let i = 0; i < formattedIds.length; i += CHUNK_SIZE) {
+        const { data: chunk, error } = await supabase
+            .from("problems")
+            .select("*")
+            .in("problem_id", formattedIds.slice(i, i + CHUNK_SIZE));
+
+        if (error) {
+            throw new Error(`Error while fetching problem details ${error.message}`);
+        }
+        data.push(...chunk);
     }
 
     const found: GetProblemsResult["found"] = {};

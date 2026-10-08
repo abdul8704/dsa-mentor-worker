@@ -10,7 +10,7 @@ RUN npm ci
 COPY . .
 
 ENV NODE_ENV=production
-EXPOSE 5000
+EXPOSE 6000
 
 # The app is run directly from TypeScript via tsx (see package.json "start"):
 # tsconfig.json only emits declaration files, so there's no compiled JS to run.

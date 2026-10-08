@@ -6,6 +6,7 @@ import { refreshRouter } from "./routes/refresh.ts";
 import { problemMetaRouter } from "./routes/problemMeta.ts";
 import { adminRouter } from "./routes/admin.ts";
 import { csesRouter } from "./routes/cses.ts";
+import { leetcodeRouter } from "./routes/leetcode.ts";
 import { startRefreshCron } from "./jobs/refreshCron.ts";
 
 const app = express();
@@ -28,6 +29,7 @@ app.use("/refresh", refreshRouter);
 app.use("/problem-meta", problemMetaRouter);
 app.use("/admin", adminRouter);
 app.use("/cses", csesRouter);
+app.use("/leetcode", leetcodeRouter);
 
 app.listen(5000, () => {
   console.log("Server is running on port 5000");

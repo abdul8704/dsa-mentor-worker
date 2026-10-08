@@ -7,6 +7,13 @@ import { upsertUserPlatformData } from "../../repository/userPlatformData.repo.t
 import axios from "axios";
 import type { ContestSyncResult, PlatformSyncResult } from "../../types/response.ts";
 import { getUserContestIds, upsertUserContests, type UserContestInsert } from "../../repository/userContest.repo.ts";
+import { getPlatformSecret, markPlatformSecretStatus } from "../../repository/userPlatformSecrets.repo.ts";
+import {
+    syncLeetCodeWithSession,
+    isLeetCodeImportRunning,
+    LeetCodeAuthError,
+    type LeetCodeSession,
+} from "./history.ts";
 
 type LC_Insert = Database["public"]["Tables"]["solved_problems"]["Insert"]
 
@@ -78,6 +85,29 @@ const refreshLeetcodeUserInfo = async (user_id: string, handle: string) => {
 
 
 export const syncLeetCodePlatformData = async (user_id: string, handle: string): Promise<PlatformSyncResult> => {
+    // With stored session keys, read the user's own submission history
+    // (newest first, stopping at what we already have) instead of the public
+    // ~20-submission window. If the keys have expired, flag them for the
+    // Settings page and fall back to the public path below — the heatmap and
+    // totals stay correct either way. Skipped while a full history import is
+    // running for this user (that import covers it).
+    const secret = await getPlatformSecret(user_id, "leetcode").catch(() => null);
+    if (secret && secret.status === "active" && !isLeetCodeImportRunning(user_id)) {
+        try {
+            const session = JSON.parse(secret.value) as LeetCodeSession;
+            const inserted = await syncLeetCodeWithSession(user_id, session);
+            await refreshLeetcodeUserInfo(user_id, handle);
+            return { success: true, user_id, platform: "leetcode", newSubmissions: inserted };
+        } catch (error: unknown) {
+            if (error instanceof LeetCodeAuthError) {
+                await markPlatformSecretStatus(user_id, "leetcode", "needs_reauth").catch(() => {});
+            }
+            console.warn(
+                `[LeetCode] session sync failed for ${user_id}, using public API: ${error instanceof Error ? error.message : error}`
+            );
+        }
+    }
+
     const { data } = await axios.post(LEETCODE_API.BASE_URL, LEETCODE_API.endpoints.recentSubmissions(handle), {
         headers: {
             "Content-Type": "application/json"

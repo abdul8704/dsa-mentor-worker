@@ -39,6 +39,34 @@ export const upsertDailyCount = async (user_id: string, date: string, solved: nu
 };
 
 /**
+ * Bulk upsert of daily_count rows (one request per 500 rows instead of one
+ * per day — a multi-year history rebuild is thousands of days).
+ */
+export const upsertDailyCounts = async (rows: { user_id: string; date: string; solved: number }[]): Promise<void> => {
+    const CHUNK_SIZE = 500;
+    for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
+        const { error } = await supabase
+            .from("daily_count")
+            .upsert(rows.slice(i, i + CHUNK_SIZE), { onConflict: "user_id, date" });
+
+        if (error)
+            throw new Error(`Error bulk-upserting daily counts: ${error.message}`);
+    }
+};
+
+/** Delete a user's daily_count rows dated before `date` (stale rows left from purged data). */
+export const deleteDailyCountsBefore = async (user_id: string, date: string): Promise<void> => {
+    const { error } = await supabase
+        .from("daily_count")
+        .delete()
+        .eq("user_id", user_id)
+        .lt("date", date);
+
+    if (error)
+        throw new Error(`Error deleting old daily counts for ${user_id}: ${error.message}`);
+};
+
+/**
  * Delete all daily_count rows for a user. Used when platform-scoped data is
  * purged (e.g. after a handle change) and the cross-platform aggregate must be
  * rebuilt from scratch.

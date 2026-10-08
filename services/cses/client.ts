@@ -4,6 +4,11 @@ import { localWallTimeToUtcIso } from "../../utils/tzConvert.ts";
 import { filterNewSolvedCSES } from "../../utils/dbHelper.ts";
 import { addSolvedProblems, getUserSolvedProblems } from "../../repository/solvedProblems.repo.ts";
 import { upsertUserPlatformData } from "../../repository/userPlatformData.repo.ts";
+// Same easy/medium/hard aggregation Codeforces/AtCoder rely on (problems.difficulty,
+// keyed off the solve-rate heuristic in utils/difficulty.ts's cses branch) — reused
+// here so the donut/platform-pill breakdown stays fresh on every 3-hour cron cycle,
+// not just the one-off connect-time backfill (see routes/cses.ts).
+import { getDifficultyCountsForUserPlatform } from "../../scripts/refreshPlatformData.ts";
 import {
     getPlatformSecret,
     markPlatformSecretStatus,
@@ -238,11 +243,17 @@ const fetchAcceptedSubmissions = async (
  */
 const syncCsesPlatformData = async (user_id: string, tasks: CSESTask[]): Promise<void> => {
     const solvedCount = tasks.filter((t) => t.status === "solved").length;
+    // Recomputed every call (not just at connect) so easy/medium/hard never go stale
+    // as the mentee solves more CSES problems between backfills.
+    const { easy, medium, hard } = await getDifficultyCountsForUserPlatform(user_id, "cses");
 
     await upsertUserPlatformData({
         user_id,
         platform: "cses",
         solved_count: solvedCount,
+        easy,
+        medium,
+        hard,
         rating: 0,
         max_rating: 0,
         updated_at: new Date().toISOString(),
