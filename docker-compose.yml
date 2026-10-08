@@ -3,16 +3,18 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+
     image: dsa-mentor-worker:local
     container_name: dsa-mentor-worker
+
     env_file:
       - .env
+
     ports:
-      - "${WORKER_PORT:-6000}:6000"
-    # Keeps the process (and its internal node-cron scheduler) alive across
-    # crashes/restarts — the refresh cron only fires while this container is
-    # actually running, so this matters more than for a typical stateless API.
+      - "127.0.0.1:${WORKER_PORT:-6000}:6000"
+
     restart: unless-stopped
+
     healthcheck:
       test:
         [

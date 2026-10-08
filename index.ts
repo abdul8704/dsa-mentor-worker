@@ -31,8 +31,8 @@ app.use("/admin", adminRouter);
 app.use("/cses", csesRouter);
 app.use("/leetcode", leetcodeRouter);
 
-app.listen(5000, () => {
-  console.log("Server is running on port 5000");
+app.listen(process.env.WORKER_PORT!, () => {
+  console.log(`Server is running on port ${process.env.WORKER_PORT}`);
 });
 
 startRefreshCron();
