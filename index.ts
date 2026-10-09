@@ -11,9 +11,18 @@ import { startRefreshCron } from "./jobs/refreshCron.ts";
 
 const app = express();
 
+// Collapse leading duplicate slashes ("//cses/status" -> "/cses/status"), which
+// a trailing "/" on the frontend's NEXT_PUBLIC_SERVER_URL produces and which
+// Express would otherwise answer with a 404.
+app.use((req, _res, next) => {
+  req.url = req.url.replace(/^\/{2,}/, "/");
+  next();
+});
+
 app.use(
   cors({
-    origin: ["http://localhost:3000", "https://dsa-mentor-seven.vercel.app", "https://algomentor.abdul-aziz.dev/"], // Next.js frontend
+    // Browser Origin headers never end in "/", so entries here must not either.
+    origin: ["http://localhost:3000", "https://dsa-mentor-seven.vercel.app", "https://algomentor.abdul-aziz.dev"], // Next.js frontend
     credentials: true,
   })
 );
