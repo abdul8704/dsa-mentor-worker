@@ -1,7 +1,6 @@
 import { getUserSolvedProblems, getUserSolvedProblemsByDate } from "../repository/solvedProblems.repo.ts"
 import type { AtcoderSubmissionResponse, CodeforcesResponse, GetProblemsResult, LeetCodeRecentSubmissionResponse } from "../types/platformResponse.ts"
 import type { CSESSubmission } from "../types/platformResponse.ts"
-import { difficultyMap as csesDifficultyMap } from "./difficulty.ts"
 import type { Database } from "../types/db.ts"
 import { getAllProbs, addProbs, getLeetCodeProbsBySlug } from "../repository/problems.repo.ts"
 import { difficultyMap } from "../utils/difficulty.ts"
@@ -211,7 +210,14 @@ export const filterNewSolvedLeetcode = async (user_id: string, platform: string,
 }
 
 
-export const filterNewSolvedCSES = async (user_id: string, platform: string, payload: CSESSubmission[]): Promise<solved_problems_insert[]> => {
+// difficultyByTask: from utils/csesDifficulty.ts's buildCsesDifficultyIndex,
+// built over the full task list (difficulty is relative to the whole section).
+export const filterNewSolvedCSES = async (
+    user_id: string,
+    platform: string,
+    payload: CSESSubmission[],
+    difficultyByTask: Map<number, string>
+): Promise<solved_problems_insert[]> => {
     const solved: Set<string> = await getUserSolvedProblems(user_id);
     const solvedByDate: Set<string> = await getUserSolvedProblemsByDate(user_id);
     const problemSet: Set<string> = await getAllProbs();
@@ -249,19 +255,13 @@ export const filterNewSolvedCSES = async (user_id: string, platform: string, pay
         if (!problemSet.has(problem_id) && !queuedProblemIds.has(problem_id)) {
             queuedProblemIds.add(problem_id);
 
-            // No numeric rating on CSES — pass the global solve rate instead
-            // (see utils/difficulty.ts's cses branch for what this means).
-            const solveRatePercent = entry.attemptedBy > 0
-                ? Math.round((entry.solvedBy / entry.attemptedBy) * 100)
-                : 100;
-
             newProblems.push({
                 problem_id,
                 platform,
                 rating: null,
                 tags: [entry.category.toLowerCase()],
                 title: entry.taskName,
-                difficulty: csesDifficultyMap(platform, solveRatePercent)
+                difficulty: difficultyByTask.get(entry.taskId) ?? "unknown"
             })
         }
     });

@@ -3,6 +3,7 @@ import type { Database } from "../types/db.ts";
 import { parseProblemUrl, type ParsedProblem } from "../utils/problemUrl.ts";
 import { fetchJson, fetchText, cached } from "../utils/httpClient.ts";
 import { difficultyMap } from "../utils/difficulty.ts";
+import { buildCsesDifficultyIndex } from "../utils/csesDifficulty.ts";
 import { getProblemDetails } from "./leetcode/client.ts";
 import { CODEFORCES_API } from "./config.ts";
 import { parseTaskList } from "./cses/client.ts";
@@ -268,15 +269,18 @@ async function fetchCsesMeta(parsed: Extract<ParsedProblem, { platform: "cses" }
         throw new Error(`CSES problem "${parsed.taskId}" not found.`);
     }
 
-    // Same solve-rate-as-difficulty heuristic as utils/dbHelper.ts's
-    // filterNewSolvedCSES uses when ingesting a mentee's own solves.
-    const solveRatePercent = info.attemptedBy > 0 ? Math.round((info.solvedBy / info.attemptedBy) * 100) : 100;
+    // Same classifier utils/dbHelper.ts's filterNewSolvedCSES uses when
+    // ingesting a mentee's own solves; it ranks within the section, so it
+    // needs the whole catalog.
+    const difficultyByTask = buildCsesDifficultyIndex(
+        [...catalog].map(([taskId, t]) => ({ taskId, category: t.category, solvedBy: t.solvedBy }))
+    );
 
     return {
         problem_id: parsed.problem_id,
         platform: "cses",
         title: info.name,
-        difficulty: difficultyMap("cses", solveRatePercent),
+        difficulty: difficultyByTask.get(Number(parsed.taskId)) ?? "unknown",
         rating: 0,
         tags: [info.category.toLowerCase()],
     };

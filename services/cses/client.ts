@@ -2,10 +2,11 @@ import * as cheerio from "cheerio";
 import { CSES_API, CSES_TIMEZONE, CSES_MIN_REQUEST_INTERVAL_MS } from "./config.ts";
 import { localWallTimeToUtcIso } from "../../utils/tzConvert.ts";
 import { filterNewSolvedCSES } from "../../utils/dbHelper.ts";
+import { buildCsesDifficultyIndex } from "../../utils/csesDifficulty.ts";
 import { addSolvedProblems, getUserSolvedProblems } from "../../repository/solvedProblems.repo.ts";
 import { upsertUserPlatformData } from "../../repository/userPlatformData.repo.ts";
 // Same easy/medium/hard aggregation Codeforces/AtCoder rely on (problems.difficulty,
-// keyed off the solve-rate heuristic in utils/difficulty.ts's cses branch) — reused
+// set by utils/csesDifficulty.ts's section + solver-rank classifier) — reused
 // here so the donut/platform-pill breakdown stays fresh on every 3-hour cron cycle,
 // not just the one-off connect-time backfill (see routes/cses.ts).
 import { getDifficultyCountsForUserPlatform } from "../../scripts/refreshPlatformData.ts";
@@ -277,7 +278,7 @@ export const getAllSubmissionsCSES = async (user_id: string, _handle: string): P
         submissions.push(...(await fetchAcceptedSubmissions(task, cookie, user_id)));
     }
 
-    const filtered: CSES_Insert[] = await filterNewSolvedCSES(user_id, "cses", submissions);
+    const filtered: CSES_Insert[] = await filterNewSolvedCSES(user_id, "cses", submissions, buildCsesDifficultyIndex(tasks));
     await addSolvedProblems(filtered);
     await syncCsesPlatformData(user_id, tasks);
 
@@ -304,7 +305,7 @@ export const refreshCSES = async (user_id: string, _handle: string): Promise<Pla
         submissions.push(...(await fetchAcceptedSubmissions(task, cookie, user_id)));
     }
 
-    const filtered: CSES_Insert[] = await filterNewSolvedCSES(user_id, "cses", submissions);
+    const filtered: CSES_Insert[] = await filterNewSolvedCSES(user_id, "cses", submissions, buildCsesDifficultyIndex(tasks));
     await addSolvedProblems(filtered);
     await syncCsesPlatformData(user_id, tasks);
 
