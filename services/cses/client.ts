@@ -5,6 +5,7 @@ import { filterNewSolvedCSES } from "../../utils/dbHelper.ts";
 import { buildCsesDifficultyIndex } from "../../utils/csesDifficulty.ts";
 import { addSolvedProblems, getUserSolvedProblems } from "../../repository/solvedProblems.repo.ts";
 import { upsertUserPlatformData } from "../../repository/userPlatformData.repo.ts";
+import { getActiveRevisionProblemIds } from "../../repository/goals.repo.ts";
 // Same easy/medium/hard aggregation Codeforces/AtCoder rely on (problems.difficulty,
 // set by utils/csesDifficulty.ts's section + solver-rank classifier) — reused
 // here so the donut/platform-pill breakdown stays fresh on every 3-hour cron cycle,
@@ -300,8 +301,22 @@ export const refreshCSES = async (user_id: string, _handle: string): Promise<Pla
     const alreadySolved = await getUserSolvedProblems(user_id); // all platforms; problem_ids are platform-prefixed
     const newlySolved = tasks.filter((t) => t.status === "solved" && !alreadySolved.has(`CSES${t.taskId}`));
 
+    // The status diff above can't see a re-solve of an already-solved task,
+    // and re-fetching every solved task each cycle would cost hundreds of
+    // requests. So only tasks in an active revision goal are re-checked:
+    // a new accepted submission there becomes an already_solved row for
+    // today's date, which is what the Goals page counts as "revised".
+    // Failing to read goals must not block the regular sync.
+    const revisionIds = await getActiveRevisionProblemIds(user_id, "CSES").catch((error) => {
+        console.error(`[CSES] Could not load revision goals for ${user_id}: ${error instanceof Error ? error.message : error}`);
+        return new Set<string>();
+    });
+    const revising = tasks.filter(
+        (t) => t.status === "solved" && revisionIds.has(`CSES${t.taskId}`) && alreadySolved.has(`CSES${t.taskId}`)
+    );
+
     const submissions: CSESSubmission[] = [];
-    for (const task of newlySolved) {
+    for (const task of [...newlySolved, ...revising]) {
         submissions.push(...(await fetchAcceptedSubmissions(task, cookie, user_id)));
     }
 
