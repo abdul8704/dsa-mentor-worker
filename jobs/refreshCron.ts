@@ -1,55 +1,70 @@
 import cron from "node-cron";
-import { runFullRefreshForAllUsers } from "./refreshPipeline.ts";
+import { runFullRefreshForAllUsers, runFullRefreshForWidgetUsers, type BatchResult } from "./refreshPipeline.ts";
 
 /**
- * Cron schedule for the recurring "refresh all users" job.
+ * Two recurring refresh jobs (standard 5-field cron syntax:
+ * "minute hour day month weekday"):
  *
- * Configurable via the REFRESH_CRON_SCHEDULE env var (standard 5-field cron
- * syntax: "minute hour day month weekday"). Defaults to every 3 hours.
+ *   REFRESH_CRON_SCHEDULE         every user without a connected widget.
+ *                                 Default every 3 hours ("0 *\/3 * * *").
+ *   WIDGET_REFRESH_CRON_SCHEDULE  users with at least one connected desktop
+ *                                 widget, so the widget stays current.
+ *                                 Default every 5 minutes ("*\/5 * * * *").
  *
- * Examples:
- *   "0 *\/3 * * *"  -> every 3 hours (default)
- *   "0 *\/1 * * *"  -> every hour
- *   "0 0 * * *"    -> once a day at midnight
+ * Each job skips a tick while its previous run is still going, and a user
+ * already being refreshed by the other job is skipped (see refreshPipeline).
  */
-const DEFAULT_SCHEDULE = "0 */3 * * *";
-const schedule = process.env.REFRESH_CRON_SCHEDULE?.trim() || DEFAULT_SCHEDULE;
+const jobs = [
+    {
+        name: "RefreshCron",
+        envVar: "REFRESH_CRON_SCHEDULE",
+        fallback: "0 */3 * * *",
+        run: runFullRefreshForAllUsers,
+    },
+    {
+        name: "WidgetRefreshCron",
+        envVar: "WIDGET_REFRESH_CRON_SCHEDULE",
+        fallback: "*/5 * * * *",
+        run: runFullRefreshForWidgetUsers,
+    },
+] as const;
 
-let isRunning = false;
+const makeRunner = (name: string, run: () => Promise<BatchResult>) => {
+    let isRunning = false;
+    return async () => {
+        if (isRunning) {
+            console.log(`[${name}] Skipping run — previous refresh is still in progress.`);
+            return;
+        }
 
-const runJob = async () => {
-    if (isRunning) {
-        console.log("[RefreshCron] Skipping run — previous refresh is still in progress.");
-        return;
-    }
+        isRunning = true;
+        console.log(`[${name}] Starting scheduled refresh at ${new Date().toISOString()}`);
 
-    isRunning = true;
-    const startedAt = new Date().toISOString();
-    console.log(`[RefreshCron] Starting scheduled full refresh at ${startedAt}`);
-
-    try {
-        const { total, processed, failed } = await runFullRefreshForAllUsers();
-        console.log(`[RefreshCron] Finished. total=${total} processed=${processed} failed=${failed}`);
-    } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : "Unknown error";
-        console.error(`[RefreshCron] Scheduled refresh crashed: ${message}`);
-    } finally {
-        isRunning = false;
-    }
+        try {
+            const { total, processed, failed, skipped } = await run();
+            console.log(`[${name}] Finished. total=${total} processed=${processed} failed=${failed} skipped=${skipped}`);
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : "Unknown error";
+            console.error(`[${name}] Scheduled refresh crashed: ${message}`);
+        } finally {
+            isRunning = false;
+        }
+    };
 };
 
 /**
- * Registers the recurring refresh-all-users cron job. Call once at server
- * startup (e.g. from index.ts).
+ * Registers both recurring refresh jobs. Call once at server startup
+ * (e.g. from index.ts).
  */
 export const startRefreshCron = (): void => {
-    if (!cron.validate(schedule)) {
-        console.error(`[RefreshCron] Invalid cron schedule "${schedule}" — falling back to default "${DEFAULT_SCHEDULE}"`);
-        cron.schedule(DEFAULT_SCHEDULE, runJob);
-        console.log(`[RefreshCron] Scheduled with default expression "${DEFAULT_SCHEDULE}"`);
-        return;
+    for (const job of jobs) {
+        const configured = process.env[job.envVar]?.trim() || job.fallback;
+        let expression: string = configured;
+        if (!cron.validate(configured)) {
+            console.error(`[${job.name}] Invalid ${job.envVar} "${configured}" — falling back to "${job.fallback}"`);
+            expression = job.fallback;
+        }
+        cron.schedule(expression, makeRunner(job.name, job.run));
+        console.log(`[${job.name}] Scheduled with expression "${expression}"`);
     }
-
-    cron.schedule(schedule, runJob);
-    console.log(`[RefreshCron] Scheduled with expression "${schedule}"`);
 };

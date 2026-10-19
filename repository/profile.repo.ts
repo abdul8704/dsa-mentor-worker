@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "../db/supabase.ts";
 
 export const getAllUsers = async (): Promise<string[]> => {
@@ -55,4 +56,22 @@ export const updateLastRefreshed = async (user_id: string): Promise<void> => {
 
     if (error)
         throw new Error(`Error updating last_refreshed for ${user_id}: ${error.message}`);
+}
+
+/**
+ * user_ids that have at least one connected (not revoked) desktop widget.
+ * These users get the fast refresh schedule (see jobs/refreshCron.ts).
+ */
+export const getUsersWithActiveWidget = async (): Promise<string[]> => {
+    // widget_tokens is created by the web app's migrations and isn't in this
+    // repo's generated types (types/db.ts), so query it untyped.
+    const { data, error } = await (supabase as unknown as SupabaseClient)
+        .from("widget_tokens")
+        .select("user_id")
+        .is("revoked_at", null);
+
+    if (error)
+        throw new Error(`Error fetching widget users: ${error.message}`);
+
+    return [...new Set(((data ?? []) as { user_id: string | null }[]).map((row) => row.user_id).filter((id): id is string => !!id))];
 }

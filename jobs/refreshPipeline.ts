@@ -3,7 +3,7 @@ import { refreshUserContests } from "./contestRefresh.ts";
 import { updateDailyCountForUser } from "./dailyCount.ts";
 import { updateStreakForUser } from "./streak.ts";
 import { syncAssignmentCompletions } from "./assignmentSync.ts";
-import { getAllUsers, updateLastRefreshed } from "../repository/profile.repo.ts";
+import { getAllUsers, getUsersWithActiveWidget, updateLastRefreshed } from "../repository/profile.repo.ts";
 
 /**
  * Helper: sleep for `ms` milliseconds.
@@ -84,36 +84,72 @@ export const runFullRefreshForUser = async (user_id: string): Promise<RefreshRes
 };
 
 /**
- * Run the full refresh pipeline for every user in the system, one at a time
+ * Users a scheduled batch is refreshing right now. The widget and regular
+ * schedules run independently, so a batch skips anyone the other one is
+ * already on instead of hitting their platforms twice at the same time.
+ */
+const inFlight = new Set<string>();
+
+export type BatchResult = { total: number; processed: number; failed: number; skipped: number };
+
+/**
+ * Run the full refresh pipeline for the given users, one at a time
  * (sequential, to stay friendly to third-party platform rate limits).
  */
-export const runFullRefreshForAllUsers = async (): Promise<{
-    total: number;
-    processed: number;
-    failed: number;
-}> => {
-    const users = await getAllUsers();
-    console.log(`[Refresh] Running full refresh for ${users.length} users...`);
+export const runFullRefreshForUsers = async (userIds: string[], label: string): Promise<BatchResult> => {
+    console.log(`[Refresh:${label}] Running full refresh for ${userIds.length} users...`);
 
     let processed = 0;
     let failed = 0;
+    let skipped = 0;
 
-    for (const user_id of users) {
+    for (const user_id of userIds) {
+        if (inFlight.has(user_id)) {
+            skipped++;
+            continue;
+        }
+        inFlight.add(user_id);
         try {
             const result = await runFullRefreshForUser(user_id);
             if (result.success) {
                 processed++;
             } else {
                 failed++;
-                console.error(`[Refresh] ${user_id} finished with errors: ${result.message}`);
+                console.error(`[Refresh:${label}] ${user_id} finished with errors: ${result.message}`);
             }
         } catch (error: unknown) {
             failed++;
             const message = error instanceof Error ? error.message : "Unknown error";
-            console.error(`[Refresh] ${user_id} threw unexpectedly: ${message}`);
+            console.error(`[Refresh:${label}] ${user_id} threw unexpectedly: ${message}`);
+        } finally {
+            inFlight.delete(user_id);
         }
     }
 
-    console.log(`[Refresh] Full refresh complete. total=${users.length} processed=${processed} failed=${failed}`);
-    return { total: users.length, processed, failed };
+    console.log(
+        `[Refresh:${label}] Complete. total=${userIds.length} processed=${processed} failed=${failed} skipped=${skipped}`
+    );
+    return { total: userIds.length, processed, failed, skipped };
+};
+
+/**
+ * Regular schedule: every user except those with a connected widget, who are
+ * already refreshed on the faster widget schedule.
+ */
+export const runFullRefreshForAllUsers = async (): Promise<BatchResult> => {
+    const [users, widgetUsers] = await Promise.all([
+        getAllUsers(),
+        getUsersWithActiveWidget().catch((error: unknown) => {
+            // If the lookup fails, fall back to refreshing everyone here.
+            console.error(`[Refresh:regular] Widget user lookup failed: ${error instanceof Error ? error.message : error}`);
+            return [] as string[];
+        }),
+    ]);
+    const fast = new Set(widgetUsers);
+    return runFullRefreshForUsers(users.filter((id) => !fast.has(id)), "regular");
+};
+
+/** Widget schedule: only users with at least one connected widget. */
+export const runFullRefreshForWidgetUsers = async (): Promise<BatchResult> => {
+    return runFullRefreshForUsers(await getUsersWithActiveWidget(), "widget");
 };
